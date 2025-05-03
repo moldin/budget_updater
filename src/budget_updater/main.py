@@ -6,8 +6,9 @@ import logging
 import sys
 from pathlib import Path
 
-from budget_updater.sheets_api import SheetAPI
-from budget_updater.vertex_ai import VertexAI
+# Use relative imports within the package
+from .sheets_api import SheetAPI
+from .vertex_ai import VertexAI
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +47,12 @@ def parse_args():
         help="Run in test mode (adds dummy data to New Transactions tab)"
     )
     
+    parser.add_argument(
+        "--analyze", "-a",
+        action="store_true",
+        help="Analyze spreadsheet structure and save to sheet_analysis.md"
+    )
+    
     return parser.parse_args()
 
 
@@ -70,7 +77,14 @@ def main():
             logger.info("Successfully added dummy transaction to New Transactions tab")
             return
             
-        # If not in test mode, we expect file and account arguments
+        # Analyze spreadsheet structure
+        if args.analyze:
+            logger.info("Analyzing spreadsheet structure")
+            sheets_api.analyze_sheet_structure()
+            logger.info("Analysis complete. See sheet_analysis.md for details")
+            return
+            
+        # If not in test or analyze mode, we expect file and account arguments
         if not args.file or not args.account:
             logger.error("Both --file and --account arguments are required")
             sys.exit(1)
