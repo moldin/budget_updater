@@ -1,6 +1,22 @@
 import logging
 from pathlib import Path
 import pandas as pd
+from typing import Optional, Dict, Callable, Any
+
+# ---vvv--- REMOVE PARSER REGISTRY FROM HERE ---vvv---
+# from .parsers import parse_seb # Ensure parse_seb is available for the registry
+
+# # Type hint for parser functions
+# ParserFunction = Callable[[Path], Optional[pd.DataFrame]]
+# 
+# PARSER_REGISTRY: Dict[str, ParserFunction] = {
+#     'seb': parse_seb,
+#     # Add other parsers here later, e.g.:
+#     # 'revolut': parse_revolut,
+#     # 'firstcard': parse_firstcard,
+#     # 'strawberry': parse_strawberry,
+# }
+# ---^^^--- END REMOVE PARSER REGISTRY FROM HERE ---^^^---
 
 logger = logging.getLogger(__name__)
 
@@ -58,17 +74,17 @@ def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
         # Select and rename columns for consistency
         parsed_df = df[[date_col, desc_col, amount_col]].copy()
         parsed_df.rename(columns={
-            date_col: 'Date',
-            desc_col: 'Description',
-            amount_col: 'Amount'
+            date_col: 'ParsedDate',
+            desc_col: 'ParsedDescription',
+            amount_col: 'ParsedAmount'
         }, inplace=True)
 
         # --- Type Conversion and Validation ---
         # Convert Date column to datetime objects (YYYY-MM-DD format assumed)
         try:
-            parsed_df['Date'] = pd.to_datetime(parsed_df['Date'], errors='coerce')
-            if parsed_df['Date'].isnull().any():
-                null_dates_count = parsed_df['Date'].isnull().sum()
+            parsed_df['ParsedDate'] = pd.to_datetime(parsed_df['ParsedDate'], errors='coerce')
+            if parsed_df['ParsedDate'].isnull().any():
+                null_dates_count = parsed_df['ParsedDate'].isnull().sum()
                 logger.warning(f"{null_dates_count} date(s) could not be parsed in {file_path}. Review file format. These rows will be dropped.")
         except Exception as e:
             logger.error(f"Error converting Date column to datetime in {file_path}: {e}")
@@ -76,21 +92,21 @@ def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
 
         # Convert Amount column to numeric, handling potential thousand separators (like spaces) and decimal commas
         try:
-            parsed_df['Amount'] = parsed_df['Amount'].astype(str).str.replace(r'[\s\xa0]+', '', regex=True).str.replace(',', '.', regex=False)
-            parsed_df['Amount'] = pd.to_numeric(parsed_df['Amount'], errors='coerce')
-            if parsed_df['Amount'].isnull().any():
-                null_amounts_count = parsed_df['Amount'].isnull().sum()
+            parsed_df['ParsedAmount'] = parsed_df['ParsedAmount'].astype(str).str.replace(r'[\s\xa0]+', '', regex=True).str.replace(',', '.', regex=False)
+            parsed_df['ParsedAmount'] = pd.to_numeric(parsed_df['ParsedAmount'], errors='coerce')
+            if parsed_df['ParsedAmount'].isnull().any():
+                null_amounts_count = parsed_df['ParsedAmount'].isnull().sum()
                 logger.warning(f"{null_amounts_count} amount(s) could not be parsed to numeric in {file_path}. Review file format. These rows will be dropped.")
         except Exception as e:
             logger.error(f"Error converting Amount column to numeric in {file_path}: {e}")
             return None
             
         # Ensure Description is string and handle potential NaN values if any rows had only NaN description
-        parsed_df['Description'] = parsed_df['Description'].fillna('').astype(str)
+        parsed_df['ParsedDescription'] = parsed_df['ParsedDescription'].fillna('').astype(str)
 
         # Drop rows where essential data might be missing after conversion (Date or Amount)
         original_count = len(parsed_df)
-        parsed_df.dropna(subset=['Date', 'Amount'], inplace=True)
+        parsed_df.dropna(subset=['ParsedDate', 'ParsedAmount'], inplace=True)
         dropped_count = original_count - len(parsed_df)
         if dropped_count > 0:
              logger.info(f"Dropped {dropped_count} rows due to parsing errors (Date or Amount).")
@@ -116,6 +132,19 @@ def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
         else:
              logger.exception(f"SEB Parser: An unexpected error occurred while parsing {file_path}: {e}")
         return None
+
+# ---vvv--- ADD PARSER REGISTRY HERE (AT THE END) ---vvv---
+# Type hint for parser functions
+ParserFunction = Callable[[Path], Optional[pd.DataFrame]]
+
+PARSER_REGISTRY: Dict[str, ParserFunction] = {
+    'seb': parse_seb,
+    # Add other parsers here as they are defined, e.g.:
+    # 'revolut': parse_revolut,
+    # 'firstcard': parse_firstcard,
+    # 'strawberry': parse_strawberry,
+}
+# ---^^^--- END ADD PARSER REGISTRY HERE ---^^^---
 
 # Example usage (for testing purposes):
 # if __name__ == '__main__':

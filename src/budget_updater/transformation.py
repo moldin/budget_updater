@@ -34,8 +34,8 @@ def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str)
         logger.warning("Transformation skipped: Input DataFrame is None or empty.")
         return [] # Return empty list
 
-    # Verify necessary columns exist
-    required_cols = ['Date', 'Description', 'Amount']
+    # Verify necessary columns exist (using standardized names)
+    required_cols = ['ParsedDate', 'ParsedDescription', 'ParsedAmount']
     if not all(col in parsed_df.columns for col in required_cols):
         missing = [col for col in required_cols if col not in parsed_df.columns]
         logger.error(f"Transformation failed: Missing expected column(s) in parsed data: {missing}")
@@ -44,15 +44,15 @@ def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str)
     transformed_data = []
     for _, row in parsed_df.iterrows():
         try:
-            amount = row['Amount']
+            amount = row['ParsedAmount']
             outflow = amount * -1 if amount < 0 else 0.0
             inflow = amount if amount >= 0 else 0.0 # Includes 0 as inflow initially
 
-            # Handle potential NaN in Description
-            memo = str(row['Description']) if pd.notna(row['Description']) else ''
+            # Handle potential NaN in Description - already handled by parser, but keep check
+            memo = str(row['ParsedDescription']) if pd.notna(row['ParsedDescription']) else ''
 
             transaction_dict = {
-                'Date': row['Date'].strftime('%Y-%m-%d'), # Format date as YYYY-MM-DD string
+                'Date': row['ParsedDate'].strftime('%Y-%m-%d'), # Format date as YYYY-MM-DD string
                 'Outflow': format_currency(outflow),
                 'Inflow': format_currency(inflow),
                 'Category': config.PLACEHOLDER_CATEGORY, # Use config constant

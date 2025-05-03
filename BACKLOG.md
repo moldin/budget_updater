@@ -111,6 +111,34 @@ Each iteration aims to deliver a runnable version of the application with added 
 
 ---
 
+### Refactoring Iteration (Post-Iteration 3)
+
+**Goal:** Improve code structure for maintainability and extensibility before adding more complex features and parsers. Focus on decoupling components and standardizing data flow.
+
+**Tasks:**
+
+- [x] **Refactor Parser Selection:**
+    - Create a parser registry (e.g., a dictionary mapping account aliases like `'seb'` to their corresponding parser functions like `parse_seb`) probably within the `parsers` module or a dedicated factory function.
+    - Update `main.py` to use this registry/factory to dynamically select the parser based on the `--account` alias, removing the `if/elif` block.
+    - **Verification:** Run `budget-updater --account seb --file <seb_file>` and confirm it still parses correctly.
+- [x] **Standardize Parser Output:**
+    - Define a clear, consistent structure (e.g., DataFrame columns) that *all* parsers must return. This should include standardized column names for date, description, and a signed amount (e.g., `ParsedDate`, `ParsedDescription`, `ParsedAmount`).
+    - Modify `parsers.parse_seb` to adhere to this structure (e.g., rename columns, ensure `ParsedAmount` has the correct sign).
+    - **Verification:** Run SEB processing. Inspect the DataFrame returned by the parser. Check logs.
+- [x] **Simplify Transformation Input:**
+    - Update `transformation.transform_transactions` to expect the standardized DataFrame structure defined above (e.g., it now uses `ParsedAmount` for `OUTFLOW`/`INFLOW` logic directly).
+    - Remove any bank-specific logic currently assumed within the transformation function (it should be purely generic).
+    - **Verification:** Run SEB processing end-to-end. Check the output in the Google Sheet. Check logs.
+- [x] **Externalize Category List:**
+    - Move the large `CATEGORIES_WITH_DESCRIPTIONS` string literal from `categorizer.py` into `config.py` as a constant.
+    - Update `categorizer.py` to import and use this constant from `config`.
+    - **Verification:** Run SEB processing with categorization. Confirm categories are still generated correctly.
+- [x] **(Optional) Configuration Review:** Briefly review `config.py`. Ensure necessary constants are present and naming is consistent. Consider if any other hardcoded values (e.g., `STATUS` emoji) should be moved there.
+
+**Deliverable:** A refactored codebase where parser selection is dynamic, parser output is standardized, the transformation function is generic, and the category list is centralized in configuration. The application should still process SEB files correctly end-to-end.
+
+---
+
 ### Iteration 4: Duplicate Handling & State Management
 
 **Goal:** Prevent adding duplicate transactions and make the process resumable.

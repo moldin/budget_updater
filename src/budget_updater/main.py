@@ -15,6 +15,7 @@ from .categorizer import categorize_transaction # Import the new function
 from tqdm import tqdm # Import tqdm
 from . import config # Import config module itself
 from .sheets_api import SheetAPI # Import the class
+from .parsers import PARSER_REGISTRY # Import the registry
 
 # Configure logging
 logging.basicConfig(
@@ -152,17 +153,12 @@ def main():
         parsed_data = None
         # Update parser selection logic to use the *alias* (account_cli_arg)
         # This assumes parser logic aligns with the aliases
-        if account_cli_arg == 'seb':
-            parsed_data = parse_seb(file_path)
-        # elif account_cli_arg == 'revolut':
-            # parsed_data = parse_revolut(file_path) # Add when implemented
-        # elif account_cli_arg == 'firstcard':
-             # parsed_data = parse_firstcard(file_path) # Add when implemented
-        # elif account_cli_arg == 'strawberry':
-            # parsed_data = parse_strawberry(file_path) # Add when implemented
+        parser_function = PARSER_REGISTRY.get(account_cli_arg)
+        if parser_function:
+            parsed_data = parser_function(file_path)
         else:
-            # This case should be less likely now due to alias checking, but keep as fallback
-            logger.error(f"No parser logic defined for account alias '{account_cli_arg}'.")
+            # This should ideally not be reached due to prior alias validation
+            logger.error(f"No parser function found in registry for alias '{account_cli_arg}'. Check PARSER_REGISTRY in parsers.py.")
             sys.exit(1)
 
         if parsed_data is None:

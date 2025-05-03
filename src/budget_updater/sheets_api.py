@@ -6,6 +6,7 @@ import logging
 import os
 import pickle
 from pathlib import Path
+from typing import List, Dict, Any
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -166,49 +167,110 @@ class SheetAPI:
         """Returns the cached list of valid account names."""
         return self.accounts
         
-    def append_transactions(self, transactions: list[dict]) -> bool:
-        """Appends rows of transaction data to the 'New Transactions' sheet."""
-        if not self.service:
-            logger.error("Cannot append transactions: Google Sheets service not available.")
-            return False
+    def append_transactions(self, transactions: List[Dict[str, Any]]) -> bool:
+        """
+        Appends a list of transactions to the 'New Transactions' sheet,
+        preserving existing cell formatting and validation by inserting rows first.
+
+        Args:
+            transactions: A list of dictionaries, where each key is a column header
+                          and the value is the cell content for that transaction.
+
+        Returns:
+            True if successful, False otherwise.
+        """
         if not transactions:
             logger.warning("No transactions provided to append.")
             return True # Nothing to do, considered success
 
+        if not self.service:
+            logger.error("Sheets service not initialized. Cannot append transactions.")
+            return False
+
+        sheet_name = config.NEW_TRANSACTIONS_SHEET_NAME
+        spreadsheet_id = config.SPREADSHEET_ID
+        num_rows_to_add = len(transactions)
+        target_columns = config.TARGET_COLUMNS # Use the order defined in config
+        logger.info(f"Preparing to add {num_rows_to_add} transactions to '{sheet_name}'...")
+
         try:
-            # Convert list of dicts to list of lists in the correct order
-            data_to_append = []
-            for txn in transactions:
-                # Ensure row order matches TARGET_COLUMNS definition in config
-                row = [txn.get(col, '') for col in config.TARGET_COLUMNS]
-                data_to_append.append(row)
-
-            body = {
-                'values': data_to_append
-            }
-            # Specify the sheet name from config
-            range_ = f'{config.NEW_TRANSACTIONS_SHEET_NAME}!A:A' # Append after last row with data in col A
+            # --- 1. Find the last row with data in the sheet --- 
+            # Check column A for simplicity, assuming it's populated if the row is.
+            # This gives us the number of rows with content.
+            check_range = f"{sheet_name}!A1:A" # Check from A1 down
+            result = self.service.spreadsheets().values().get(
+                spreadsheetId=spreadsheet_id,
+                range=check_range
+            ).execute()
+            values = result.get('values', [])
+            # last_row is the 1-based index of the last row containing data.
+            # If sheet is empty or only has headers, result might be empty or just header.
+            # We assume header is row 1. If values is empty, last row with data is 0.
+            # If values has header, last row is 1. If data exists, it's len(values).
+            last_row = len(values) 
+            logger.debug(f"Detected last row with data at 1-based index: {last_row} in '{sheet_name}'")
             
-            logger.info(f"Appending {len(data_to_append)} rows to {config.NEW_TRANSACTIONS_SHEET_NAME}...")
+            # The row index where insertion should start (0-based for API request)
+            insert_start_0_based_index = last_row 
 
-            result = self.service.spreadsheets().values().append(
-                spreadsheetId=config.SPREADSHEET_ID,
-                range=range_,
-                valueInputOption='USER_ENTERED', # Interpret values as if user typed them
-                insertDataOption='INSERT_ROWS', # Insert new rows for the data
-                body=body).execute()
+            # --- 2. Get sheetId required for batchUpdate --- 
+            sheet_metadata = self.service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+            sheet_properties = next((s['properties'] for s in sheet_metadata['sheets'] if s['properties']['title'] == sheet_name), None)
+            if not sheet_properties:
+                logger.error(f"Could not find sheet properties for sheet name '{sheet_name}'")
+                return False
+            sheet_id = sheet_properties['sheetId']
+            logger.debug(f"Found sheetId {sheet_id} for sheet '{sheet_name}'")
 
-            updates = result.get('updates', {})
-            rows_appended = updates.get('updatedRows', 0)
-            logger.info(f"{rows_appended} rows appended successfully.")
-            return rows_appended == len(data_to_append)
+            # --- 3. Prepare batch update requests --- \n            requests = []\n            \n            # 3a. Insert blank rows (NO inheritFromBefore)\n            insert_request = {\n                "insertDimension": {\n                    "range": {\n                        "sheetId": sheet_id,\n                        "dimension": "ROWS",\n                        "startIndex": insert_start_0_based_index, # Insert *after* this 0-based index\n                        "endIndex": insert_start_0_based_index + num_rows_to_add\n                    },\n                    # "inheritFromBefore": True # <-- REMOVED/Set to False implicitly\n                }\n            }\n            requests.append(insert_request)\n\n            # 3b. Copy Format/Validation from template row (e.g., row 2) to new rows\n            # Assuming header is row 1, template is row 2.\n            template_row_index = 1 # 0-based index for row 2\n            end_column_index = len(target_columns) # 0-based exclusive end index\n            \n            # Check if there's at least one row below the header to copy from\n            if last_row >= 1: # Ensure there's a header row or data to potentially copy from (adjust if header row can be empty) \n                source_range = {\n                    "sheetId": sheet_id,\n                    "startRowIndex": template_row_index, \n                    "endRowIndex": template_row_index + 1, \n                    "startColumnIndex": 0,\n                    "endColumnIndex": end_column_index \n                }\n                destination_range = {\n                    "sheetId": sheet_id,\n                    "startRowIndex": insert_start_0_based_index,\n                    "endRowIndex": insert_start_0_based_index + num_rows_to_add,\n                    "startColumnIndex": 0,\n                    "endColumnIndex": end_column_index \n                }\n                \n                copy_paste_request = {\n                    "copyPaste": {\n                        "source": source_range,\n                        "destination": destination_range,\n                        "pasteType": "PASTE_FORMAT", # Copies formatting rules and data validation\n                        "pasteOrientation": "NORMAL"\n                    }\n                }\n                requests.append(copy_paste_request)\n                logger.debug(f"Adding request to copy format from row {template_row_index + 1} to new rows.")\n            else:\n                logger.warning(f"Cannot copy format, sheet '{sheet_name}' has less than 2 rows. New rows might lack formatting/validation.")\n\n            # --- Execute Batch Update (Insert + Copy Format) ---\n            if requests:\n                batch_update_body = {'requests': requests}\n                logger.info(f"Executing batch update (insert rows, copy format) for '{sheet_name}'...")\n                self.service.spreadsheets().batchUpdate(\n                    spreadsheetId=spreadsheet_id,\n                    body=batch_update_body\n                ).execute()\n                logger.debug("Batch update request executed.")\n            else:\n                logger.error("No requests generated for batch update. This should not happen.")\n                return False\n\n            # --- 4. Prepare data for update --- \n
+
+            # --- 4. Prepare data for update --- 
+            # Convert list of dicts to list of lists in the correct column order
+            update_values = []
+            for txn in transactions:
+                row_values = [txn.get(col, "") for col in target_columns]
+                update_values.append(row_values)
+            
+            if not update_values:
+                 logger.error("Failed to prepare transaction data into list format.")
+                 return False # Should not happen if transactions list was valid
+
+            # --- 5. Update the newly inserted rows with values --- 
+            # Calculate the range for the newly inserted rows (A<start>:G<end> assuming 7 columns)
+            # The first new row is last_row + 1 (1-based)
+            update_start_row = last_row + 1
+            update_end_row = last_row + num_rows_to_add
+            # Assuming TARGET_COLUMNS defines the width correctly (A..G for 7 columns)
+            end_column_letter = chr(ord('A') + len(target_columns) - 1) 
+            update_range = f"{sheet_name}!A{update_start_row}:{end_column_letter}{update_end_row}"
+            
+            update_body = {
+                'values': update_values
+            }
+            
+            logger.info(f"Updating range {update_range} with {len(update_values)} transactions...")
+            self.service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=update_range,
+                valueInputOption="USER_ENTERED", # Interpret values as if typed by user
+                body=update_body
+            ).execute()
+
+            logger.info(f"Successfully added {num_rows_to_add} transactions to '{sheet_name}' preserving formatting.")
+            return True
 
         except HttpError as error:
-            logger.error(f"An HTTP error occurred: {error}")
-            logger.error(f"Details: {error.content}")
+            logger.error(f"An API error occurred: {error}", exc_info=True)
+            # Parse error details if possible
+            error_details = error.resp.get('content', '{}')
+            try:
+                 error_json = json.loads(error_details)
+                 logger.error(f"API Error Details: {error_json.get('error', {}).get('message', 'N/A')}")
+            except json.JSONDecodeError:
+                 logger.error(f"API Error Content: {error_details}")
             return False
         except Exception as e:
-            logger.exception(f"An unexpected error occurred during append: {e}")
+            logger.exception(f"An unexpected error occurred during sheet update: {e}")
             return False
 
 
