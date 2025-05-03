@@ -112,4 +112,5 @@ credentials.json
 *.token
 *.credentials
 data/output/
-data/temp/ 
+data/temp/
+credentials/ 
