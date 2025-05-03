@@ -31,25 +31,28 @@ def transform_transactions(parsed_df: pd.DataFrame, account_name: str) -> pd.Dat
 
         for index, row in parsed_df.iterrows():
             date_str = row['Date'].strftime('%Y-%m-%d')
-            amount = row['Amount']
+            amount = row['Amount'] # This is a float
             description = row['Description']
 
-            outflow = 0.0
-            inflow = 0.0
+            outflow_val = ''
+            inflow_val = ''
 
             # SEB Logic: Negative amount is outflow, positive is inflow
             if amount < 0:
-                outflow = abs(amount)
-            else:
-                inflow = amount
+                # Format as string with comma decimal, ensure 2 decimal places
+                outflow_val = f"{abs(amount):.2f}".replace('.', ',') 
+            elif amount > 0:
+                 # Format as string with comma decimal, ensure 2 decimal places
+                inflow_val = f"{amount:.2f}".replace('.', ',')
+            # If amount is exactly 0, both remain ''
                 
             # TODO: Add logic for other bank types (First Card, Strawberry) in later iterations
             # where positive amounts might mean outflow.
             
             transformed_row = {
                 'Date': date_str,
-                'Outflow': outflow,
-                'Inflow': inflow,
+                'Outflow': outflow_val, # Use formatted string or empty string
+                'Inflow': inflow_val,   # Use formatted string or empty string
                 'Category': PLACEHOLDER_CATEGORY,
                 'Account': account_name, # Use the validated name passed in
                 'Memo': description,
@@ -62,17 +65,11 @@ def transform_transactions(parsed_df: pd.DataFrame, account_name: str) -> pd.Dat
         # Reorder columns to match the target sheet exactly
         transformed_df = transformed_df[TARGET_COLUMNS]
         
-        # Convert numeric columns to float, handling potential NaNs
-        # Although we calculate outflow/inflow, ensure they are float
-        transformed_df['Outflow'] = pd.to_numeric(transformed_df['Outflow'], errors='coerce').fillna(0.0)
-        transformed_df['Inflow'] = pd.to_numeric(transformed_df['Inflow'], errors='coerce').fillna(0.0)
+        # No longer need to convert Outflow/Inflow to numeric here, they are strings or empty
+        # transformed_df['Outflow'] = pd.to_numeric(transformed_df['Outflow'], errors='coerce').fillna(0.0)
+        # transformed_df['Inflow'] = pd.to_numeric(transformed_df['Inflow'], errors='coerce').fillna(0.0)
 
-        # Optional: Format numeric columns for display (e.g., 2 decimal places)
-        # This might be better handled by Google Sheets formatting itself.
-        # transformed_df['Outflow'] = transformed_df['Outflow'].round(2)
-        # transformed_df['Inflow'] = transformed_df['Inflow'].round(2)
-
-        logger.info(f"Successfully transformed {len(transformed_df)} transactions.")
+        logger.info(f"Successfully transformed {len(transformed_df)} transactions with string formatting for currency.")
         return transformed_df
 
     except KeyError as e:

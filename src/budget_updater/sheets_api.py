@@ -54,10 +54,18 @@ class SheetAPI:
         if token_path.exists():
             try:
                 with open(token_path, "rb") as token:
-                    creds = Credentials.from_authorized_user_info(pickle.load(token))
-                    logger.debug("Loaded credentials from token.json")
+                    # Load the Credentials object directly from pickle
+                    creds = pickle.load(token)
+                    logger.debug("Loaded pickled Credentials object from token.json")
             except Exception as e:
-                logger.warning(f"Error loading credentials from token.json: {e}")
+                logger.warning(f"Error loading pickled credentials from token.json: {e}")
+                # Attempt to delete the corrupted token file so it can be recreated
+                try:
+                    token_path.unlink()
+                    logger.info(f"Deleted potentially corrupted token file: {token_path}")
+                except OSError as delete_error:
+                    logger.error(f"Failed to delete corrupted token file {token_path}: {delete_error}")
+                creds = None # Ensure creds is None if loading failed
 
         # If credentials don't exist or are invalid, get new ones
         if not creds or not creds.valid:
@@ -107,10 +115,10 @@ class SheetAPI:
                 creds = flow.run_local_server(port=0)
                 logger.info("New OAuth credentials obtained")
 
-            # Save the credentials for the next run
+            # Save the credentials object directly for the next run
             with open(token_path, "wb") as token:
-                pickle.dump(creds.to_json(), token)
-                logger.debug(f"Saved credentials to {token_path}")
+                pickle.dump(creds, token) # Save the Credentials object itself
+                logger.debug(f"Saved pickled Credentials object to {token_path}")
 
         return creds
 
