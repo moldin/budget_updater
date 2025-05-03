@@ -81,4 +81,47 @@ This file documents the retrospectives held after each development iteration.
 *   **Adhere Strictly to Workflow:** Consistently follow the established principles ("Test After *Every* Change", "Wait for Confirmation") to catch errors early and avoid rework. Slowing down slightly improves overall speed.
 *   **Parser Flexibility:** As we add more parsers, consider how to handle potential variations in sheet names or column headers within the same bank's exports over time.
 
+---
+
+## Iteration 3: Gemini AI Categorization & Refinements
+
+**Date:** 2025-05-03
+
+**Participants:** User, Gemini
+
+### What went well?
+
+*   **AI Integration:** Successfully integrated Vertex AI Gemini calls via `categorizer.py`.
+*   **Categorization & Memo Generation:** Modified the AI interaction to generate both a category and a concise summary memo in a single API call using JSON output.
+*   **Configuration Management:** Created `config.py` to centralize configuration constants (Sheet IDs, names, Vertex AI defaults) and allow overrides via environment variables.
+*   **`.env` Support:** Added `python-dotenv` to load credentials (like `GOOGLE_APPLICATION_CREDENTIALS`) and other optional settings from a `.env` file, improving local development workflow.
+*   **Account Aliases:** Implemented user-friendly account aliases (`seb`, `firstcard`, etc.) mapped to full sheet names, improving CLI usability.
+*   **Sorting:** Added chronological sorting of transactions before upload.
+*   **Testing:** Created mocked unit tests for the new `categorizer.py` module and updated previous tests (`parsers`, `transformation`) to align with refactoring.
+*   **Debugging:** Effectively used logging (including temporary debug logs) to diagnose issues like case sensitivity and unexpected `None` values.
+
+### What were the challenges?
+
+*   **Case Sensitivity Bugs:** Encountered multiple bugs due to inconsistent dictionary key casing (`Memo` vs. `MEMO`, `Category` vs. `CATEGORY`) between different modules (transformation, main loop, config). This caused categorization results to be ignored during upload initially.
+*   **`.env` File Confusion:** Initial confusion about whether a `.env` file existed and how credentials (OAuth Client vs. Service Account Key) were being handled, requiring clarification and implementation of `python-dotenv`.
+*   **Misleading Logs:** An early version of the logging in the categorization loop produced incorrect warnings, hindering diagnosis.
+*   **Test Failures due to Refactoring:** Tests for parsing and transformation failed after code changes (XLSX vs CSV, string currency format, constants moved to `config.py`) and needed updating.
+*   **Missed Requirement:** Initially overlooked the user's request for AI-generated memos, requiring rework after the main categorization was implemented.
+
+### How did we solve them?
+
+*   **Case Sensitivity:** Identified the inconsistencies through debugging logs (`repr(memo)`, `type(memo)`) and corrected the keys used in `main.py` (`txn.get('Memo')`, `txn['Category'] = ...`) to match the title case used elsewhere.
+*   **`.env` Handling:** Explicitly added `python-dotenv` dependency, added `load_dotenv()` call in `main.py`, created `.env` file, and clarified the distinction between OAuth and Service Account credentials.
+*   **Logging:** Corrected the warning message logic in the `main.py` categorization loop. Added temporary debug logs where needed.
+*   **Test Updates:** Updated parser test fixture to create `.xlsx` files. Updated transformation tests to expect string currency formats and import constants from `config.py`. Updated categorizer tests for tuple return and JSON mocking.
+*   **Memo Generation:** Refactored `categorizer.py` (prompt, response parsing, return value) and the `main.py` loop to handle the dual output (category and memo) from the AI.
+
+### What did we learn? / Key Takeaways for Next Iteration
+
+*   **Dictionary Key Consistency:** Pay *extreme* attention to dictionary key casing across different modules. Establish a convention (e.g., always use constants from `config.py` for keys) if possible.
+*   **Verify Data Flow:** When data passes between modules (e.g., parser -> transformer -> main loop -> uploader), explicitly check the structure (keys, types) at each boundary during debugging if issues arise.
+*   **Test API Contracts:** Unit tests should verify not just the function's logic but also its "contract" (what data structure it expects and returns), especially when mocking external calls or refactoring.
+*   **`.env` is Standard:** Integrating `.env` support early is generally beneficial for local development secrets management.
+*   **Review Logs Critically:** Don't always trust warning/error logs at face value; ensure they accurately reflect the condition they are supposed to report.
+
 --- 

@@ -89,21 +89,25 @@ Each iteration aims to deliver a runnable version of the application with added 
 
 **Tasks:**
 
-- [ ] **Categorizer Module:** Create a `categorizer.py` module.
-- [ ] **Fetch Categories:** Read the full category list *and descriptions* from the PRD (or potentially a config file/sheet later).
-- [ ] **AI Prompting:** Construct the prompt for Gemini, including the context (category list with descriptions) and the transaction `MEMO`.
-- [ ] **Vertex AI Call:** Implement a function `categorize_transaction(memo, categories)` that calls the Gemini model via the Vertex AI SDK.
-    * Handle API responses.
-    * Implement basic retry logic for transient errors.
-    * Return the category name or "UNCATEGORIZED" on failure/uncertainty.
-- [ ] **Main Script Logic:**
-    * Modify the main loop to call `categorize_transaction` for each transformed transaction *before* writing to the sheet.
-    * Update the `CATEGORY` field in the transformed data with the AI's response.
-    * Integrate `tqdm` to show progress during categorization.
-- [ ] **Configuration:** Ensure Vertex AI project/location/model settings are configurable (env vars recommended).
-- [ ] **Testing:** Add tests for the categorization module (potentially mocking the API call).
+- [x] **Categorizer Module:** Create a `categorizer.py` module.
+- [x] **Fetch Categories:** Read the full category list *and descriptions* from the PRD (or potentially a config file/sheet later).
+- [x] **AI Prompting:** Construct the prompt for Gemini, including the context (category list with descriptions) and the transaction `MEMO`.
+- [x] **Vertex AI Call:** Implement a function `categorize_transaction(memo, categories)` that calls the Gemini model via the Vertex AI SDK.
+    - [x] Handle API responses.
+    - [x] Implement basic retry logic for transient errors. (Note: Basic error handling added, retry logic can be enhanced later if needed).
+    - [x] Return the category name or "UNCATEGORIZED" on failure/uncertainty.
+- [x] **Main Script Logic:**
+    - [x] Modify the main loop to call `categorize_transaction` for each transformed transaction *before* writing to the sheet.
+    - [x] Update the `CATEGORY` field in the transformed data with the AI's response.
+    - [x] Integrate `tqdm` to show progress during categorization.
+- [x] **Configuration:** Ensure Vertex AI project/location/model settings are configurable (env vars recommended, defaults added via `config.py`).
+- [x] **Testing:** Add tests for the categorization module (mocking the API call).
+- [x] **Refinement (Added):** Modified AI interaction to generate a concise `Memo` alongside the `Category`. Updated prompt, parsing, main loop, and tests accordingly.
+- [x] **Refinement (Added):** Added support for `.env` file loading using `python-dotenv`.
+- [x] **Refinement (Added):** Implemented account alias mapping (`seb` -> `💰 SEB`) for CLI input.
+- [x] **Refinement (Added):** Added sorting of transactions by date before upload.
 
-**Deliverable:** The script now categorizes SEB transactions using Gemini AI before appending them to the sheet. Progress is shown via `tqdm`.
+**Deliverable:** The script now categorizes SEB transactions using Gemini AI, generates a cleaned memo, accepts account aliases, sorts output, uses `.env` for credentials, and appends results to the sheet. Progress is shown via `tqdm`.
 
 ---
 
@@ -143,7 +147,7 @@ Each iteration aims to deliver a runnable version of the application with added 
 
 ---
 
-### Iteration 6: Add First Card Parser & Account Transfer Logic
+### Iteration 6: Add First Card Parser & Refactor
 
 **Goal:** Add support for First Card and implement the special handling for invoice payments.
 
