@@ -1,0 +1,41 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "budget_updater"
+version = "0.1.0"
+description = "Bank Transaction Processor for Aspire Budget Sheet"
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [
+    {name = "Mat Soldin"}
+]
+dependencies = [
+    "pandas",
+    "google-api-python-client",
+    "google-auth-oauthlib",
+    "google-auth-httplib2",
+    "google-cloud-aiplatform",
+    "tqdm",
+    "openpyxl",
+    "xlrd",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "isort",
+    "flake8",
+]
+
+[tool.black]
+line-length = 88
+target-version = ["py38"]
+
+[tool.isort]
+profile = "black"
+
+[project.scripts]
+budget-updater = "budget_updater.main:main" 
