@@ -1,6 +1,7 @@
 """Google Sheets API integration module."""
 
 import datetime
+import glob
 import logging
 import os
 import pickle
@@ -41,14 +42,20 @@ class SheetAPI:
     def _get_credentials(self):
         """Get or refresh Google API credentials."""
         creds = None
-        token_path = Path("token.json")
-        creds_path = Path("credentials.json")
-
-        # Check if token.json exists
+        
+        # Create credentials directory if it doesn't exist
+        creds_dir = Path("credentials")
+        creds_dir.mkdir(exist_ok=True)
+        
+        # Token path (where we store the refreshed access token)
+        token_path = creds_dir / "token.json"
+        
+        # Check if token.json exists for cached credentials
         if token_path.exists():
             try:
                 with open(token_path, "rb") as token:
                     creds = Credentials.from_authorized_user_info(pickle.load(token))
+                    logger.debug("Loaded credentials from token.json")
             except Exception as e:
                 logger.warning(f"Error loading credentials from token.json: {e}")
 
@@ -57,26 +64,53 @@ class SheetAPI:
             if creds and creds.expired and creds.refresh_token:
                 try:
                     creds.refresh(Request())
+                    logger.debug("Refreshed expired credentials")
                 except Exception as e:
                     logger.warning(f"Failed to refresh token: {e}")
                     creds = None
 
             # If still no valid credentials, run the OAuth flow
             if not creds:
-                if not creds_path.exists():
+                # Find client secrets file by checking different patterns
+                client_secrets_path = None
+                
+                # First try the standard patterns
+                standard_patterns = [
+                    creds_dir / "client_secret.json",
+                    creds_dir / "credentials.json",
+                    Path("credentials.json")
+                ]
+                
+                for path in standard_patterns:
+                    if path.exists():
+                        client_secrets_path = path
+                        logger.debug(f"Found client secrets at: {path}")
+                        break
+                
+                # If not found, look for the Google OAuth client secret pattern
+                if not client_secrets_path:
+                    # Try to find files matching client_secret_*.json pattern
+                    client_secret_files = list(creds_dir.glob("client_secret_*.json"))
+                    if client_secret_files:
+                        client_secrets_path = client_secret_files[0]
+                        logger.debug(f"Found client secrets at: {client_secrets_path}")
+                
+                if not client_secrets_path:
                     raise FileNotFoundError(
-                        "credentials.json file not found. Please download OAuth 2.0 credentials "
-                        "from Google Cloud Console and save as credentials.json in the project root."
+                        "Client secrets file not found. Please download OAuth 2.0 credentials "
+                        "from Google Cloud Console and save in the credentials directory."
                     )
 
                 flow = InstalledAppFlow.from_client_secrets_file(
-                    str(creds_path), SCOPES
+                    str(client_secrets_path), SCOPES
                 )
                 creds = flow.run_local_server(port=0)
+                logger.info("New OAuth credentials obtained")
 
             # Save the credentials for the next run
             with open(token_path, "wb") as token:
                 pickle.dump(creds.to_json(), token)
+                logger.debug(f"Saved credentials to {token_path}")
 
         return creds
 
