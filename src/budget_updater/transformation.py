@@ -1,83 +1,74 @@
 import logging
 import pandas as pd
+from typing import List, Dict, Any, Optional
+from . import config # Import config
 
 logger = logging.getLogger(__name__)
 
-# Define the target column order for the Google Sheet
-TARGET_COLUMNS = ['Date', 'Outflow', 'Inflow', 'Category', 'Account', 'Memo', 'Status']
-PLACEHOLDER_CATEGORY = "PENDING_AI" # Placeholder until AI categorization is implemented
-DEFAULT_STATUS = "✅"
+# Constants now defined in config
+# TARGET_COLUMNS = config.TARGET_COLUMNS
+# PLACEHOLDER_CATEGORY = config.PLACEHOLDER_CATEGORY
+# DEFAULT_STATUS = config.DEFAULT_STATUS
 
-def transform_transactions(parsed_df: pd.DataFrame, account_name: str) -> pd.DataFrame | None:
+def format_currency(value: float) -> str:
+    """Formats a float to a string with comma decimal separator, empty for zero."""
+    if pd.isna(value) or value == 0:
+        return ''
+    # Format to 2 decimal places, replace dot with comma
+    return f"{value:.2f}".replace('.', ',')
+
+def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str) -> List[Dict[str, Any]]:
     """
-    Transforms parsed transaction data into the target Google Sheet format.
+    Transforms parsed transaction data into the structure required by the Google Sheet.
 
     Args:
-        parsed_df: DataFrame with columns ['Date', 'Description', 'Amount'].
-                     Assumes 'Date' is datetime and 'Amount' is numeric.
-        account_name: The validated account name to assign to transactions.
+        parsed_df: DataFrame with columns 'Date', 'Description', 'Amount'.
+                   Assumes Date is datetime, Description is string, Amount is numeric.
+        account_name: The target account name for the 'Account' column.
 
     Returns:
-        A DataFrame with columns matching TARGET_COLUMNS, ready for upload, 
-        or None if transformation fails.
+        A list of dictionaries, where each dictionary represents a transaction row
+        ready for upload, or an empty list if input is invalid or empty.
     """
     if parsed_df is None or parsed_df.empty:
         logger.warning("Transformation skipped: Input DataFrame is None or empty.")
-        return pd.DataFrame(columns=TARGET_COLUMNS) # Return empty dataframe with correct columns
+        return [] # Return empty list
 
-    try:
-        logger.info(f"Starting transformation for {len(parsed_df)} transactions for account '{account_name}'")
-        transformed_data = []
+    # Verify necessary columns exist
+    required_cols = ['Date', 'Description', 'Amount']
+    if not all(col in parsed_df.columns for col in required_cols):
+        missing = [col for col in required_cols if col not in parsed_df.columns]
+        logger.error(f"Transformation failed: Missing expected column(s) in parsed data: {missing}")
+        return [] # Return empty list
 
-        for index, row in parsed_df.iterrows():
-            date_str = row['Date'].strftime('%Y-%m-%d')
-            amount = row['Amount'] # This is a float
-            description = row['Description']
+    transformed_data = []
+    for _, row in parsed_df.iterrows():
+        try:
+            amount = row['Amount']
+            outflow = amount * -1 if amount < 0 else 0.0
+            inflow = amount if amount >= 0 else 0.0 # Includes 0 as inflow initially
 
-            outflow_val = ''
-            inflow_val = ''
+            # Handle potential NaN in Description
+            memo = str(row['Description']) if pd.notna(row['Description']) else ''
 
-            # SEB Logic: Negative amount is outflow, positive is inflow
-            if amount < 0:
-                # Format as string with comma decimal, ensure 2 decimal places
-                outflow_val = f"{abs(amount):.2f}".replace('.', ',') 
-            elif amount > 0:
-                 # Format as string with comma decimal, ensure 2 decimal places
-                inflow_val = f"{amount:.2f}".replace('.', ',')
-            # If amount is exactly 0, both remain ''
-                
-            # TODO: Add logic for other bank types (First Card, Strawberry) in later iterations
-            # where positive amounts might mean outflow.
-            
-            transformed_row = {
-                'Date': date_str,
-                'Outflow': outflow_val, # Use formatted string or empty string
-                'Inflow': inflow_val,   # Use formatted string or empty string
-                'Category': PLACEHOLDER_CATEGORY,
-                'Account': account_name, # Use the validated name passed in
-                'Memo': description,
-                'Status': DEFAULT_STATUS
+            transaction_dict = {
+                'Date': row['Date'].strftime('%Y-%m-%d'), # Format date as YYYY-MM-DD string
+                'Outflow': format_currency(outflow),
+                'Inflow': format_currency(inflow),
+                'Category': config.PLACEHOLDER_CATEGORY, # Use config constant
+                'Account': account_name,
+                'Memo': memo,
+                'Status': config.DEFAULT_STATUS # Use config constant
             }
-            transformed_data.append(transformed_row)
+            transformed_data.append(transaction_dict)
 
-        transformed_df = pd.DataFrame(transformed_data)
-        
-        # Reorder columns to match the target sheet exactly
-        transformed_df = transformed_df[TARGET_COLUMNS]
-        
-        # No longer need to convert Outflow/Inflow to numeric here, they are strings or empty
-        # transformed_df['Outflow'] = pd.to_numeric(transformed_df['Outflow'], errors='coerce').fillna(0.0)
-        # transformed_df['Inflow'] = pd.to_numeric(transformed_df['Inflow'], errors='coerce').fillna(0.0)
+        except Exception as e:
+            logger.error(f"Error transforming row: {row}. Error: {e}", exc_info=True)
+            # Optionally skip the row or handle differently
+            continue # Skip rows that cause errors during transformation
 
-        logger.info(f"Successfully transformed {len(transformed_df)} transactions with string formatting for currency.")
-        return transformed_df
-
-    except KeyError as e:
-        logger.error(f"Transformation failed: Missing expected column in parsed data: {e}")
-        return None
-    except Exception as e:
-        logger.exception(f"Transformation failed: An unexpected error occurred: {e}")
-        return None
+    logger.info(f"Successfully transformed {len(transformed_data)} rows into list of dicts.")
+    return transformed_data
 
 # Example usage (requires a parsed DataFrame):
 # if __name__ == '__main__':

@@ -202,7 +202,7 @@ Each transaction parsed from the input file must be transformed into a row match
 ## 10. Further Clarifications
 
 1.  **Account Name Source:** Please confirm the exact Sheet and Column name within the Google Sheet where the definitive list of `ACCOUNT` names (e.g., "SEB Privat", "First Card", "Revolut", "Strawberry Card") is maintained?
-    * Account names can be read from Column I in BackendData: https://docs.google.com/spreadsheets/d/1P-t5irZ2E_T_uWy0rAHjjWmwlUNevT0DqzLVtxq3AYk/edit?gid=968129680#gid=968129680
+    * Account names can be read from Column I in BackendData, note that some of them use emojis, it's CRUCIAL that the account names are exactly as described in the BackendData column: https://docs.google.com/spreadsheets/d/1P-t5irZ2E_T_uWy0rAHjjWmwlUNevT0DqzLVtxq3AYk/edit?gid=968129680#gid=968129680
 2.  **Account Mapping:** How should the application determine which `ACCOUNT` name to assign to the transactions from a given input file? (e.g., Ask the user every time? Use filename conventions like `seb_export.csv` -> "SEB Privat"? Add a configuration mapping?)
     * The script should use a flag like "--account seb" (or firstcard, revolut, strawberry)
 3.  **Credit Card Inflows:** How should payments *to* the credit card accounts (First Card, Strawberry) be handled? These would be inflows to the credit card account but outflows from another account (like SEB). Should the tool attempt to identify these, perhaps marking them for special review or categorizing them as '↕️ Account Transfer'? Currently, the spec assumes positive values in these files are outflows.

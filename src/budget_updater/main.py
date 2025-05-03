@@ -4,13 +4,17 @@
 import argparse
 import logging
 import sys
-from pathlib import Path
+import os # Added for environment variable check
+from pathlib import Path # Import Path
+from dotenv import load_dotenv # Import dotenv
 
 # Use relative imports within the package
-from .sheets_api import SheetAPI
-from .vertex_ai import VertexAI
 from .parsers import parse_seb # Import the SEB parser
 from .transformation import transform_transactions # Import the transformation function
+from .categorizer import categorize_transaction # Import the new function
+from tqdm import tqdm # Import tqdm
+from . import config # Import config module itself
+from .sheets_api import SheetAPI # Import the class
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def parse_args():
+def parse_args(): # Removed valid_accounts_list as input for now
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
         description="Budget Updater - Bank Transaction Processor for Aspire Budget Sheet"
@@ -31,9 +35,12 @@ def parse_args():
         "--file", help="Path to the bank export file", type=str
     )
     
+    # Update help text to show expected aliases
+    valid_aliases = list(config.ACCOUNT_NAME_MAP.keys())
+    help_text = f"Short account name alias (e.g., {', '.join(valid_aliases)})."
     parser.add_argument(
         "--account", 
-        help="Account name identifier (e.g., seb, firstcard, revolut, strawberry). Must match part of an account in BackendData Col I.",
+        help=help_text,
         type=str,
     )
     
@@ -60,8 +67,12 @@ def parse_args():
 
 def main():
     """Execute the main application logic."""
+    load_dotenv() 
+    logger.info("Loaded environment variables from .env file (if present).")
+
+    # Initialize SheetAPI *after* parsing basic args, before validation
     args = parse_args()
-    
+
     # Set logging level based on verbosity
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -69,62 +80,67 @@ def main():
     logger.info("Starting Budget Updater")
     
     try:
-        # Initialize Google Sheets API connection
-        sheets_api = SheetAPI()
+        # Initialize SheetAPI
+        try:
+            sheets_api = SheetAPI()
+        except Exception as e:
+            logger.error(f"Failed to initialize SheetAPI: {e}", exc_info=True)
+            sys.exit(1)
+
+        if sheets_api.service is None:
+             logger.error("SheetAPI service could not be initialized. Cannot proceed.")
+             sys.exit(1)
         
-        # Test connection by writing dummy data
+        # Handle test/analyze modes first
         if args.test:
             logger.info("Running in test mode")
             sheets_api.append_dummy_transaction()
-            logger.info("Successfully added dummy transaction to New Transactions tab")
+            logger.info(f"Dummy transaction added to '{config.NEW_TRANSACTIONS_SHEET_NAME}' tab")
             return
             
-        # Analyze spreadsheet structure
         if args.analyze:
             logger.info("Analyzing spreadsheet structure")
             sheets_api.analyze_sheet_structure()
             logger.info("Analysis complete. See sheet_analysis.md for details")
             return
             
-        # If not in test or analyze mode, we expect file and account arguments
+        # --- Argument and Account Validation ---
         if not args.file or not args.account:
-            logger.error("Both --file and --account arguments are required unless using --test or --analyze")
+            logger.error("Both --file and --account arguments are required.")
             sys.exit(1)
             
-        # Validate account name
-        # Access the pre-loaded accounts from the SheetAPI instance
-        valid_accounts = sheets_api.accounts 
-        if not valid_accounts:
-             logger.error("Could not retrieve valid account names from the spreadsheet. Ensure 'BackendData' tab, Column I is populated and SheetAPI initialized correctly.")
+        account_cli_arg = args.account.lower() # Use lower case for lookup
+
+        # 1. Look up the alias in the map
+        account_name_mapped = config.ACCOUNT_NAME_MAP.get(account_cli_arg)
+        
+        if not account_name_mapped:
+            logger.error(f"Unknown account alias: '{args.account}'. Valid aliases are: {list(config.ACCOUNT_NAME_MAP.keys())}")
+            sys.exit(1)
+
+        # 2. Verify the mapped name exists in the sheet
+        valid_accounts_from_sheet = sheets_api.accounts # Get list from SheetAPI instance
+        if not valid_accounts_from_sheet:
+             logger.error("Could not retrieve valid account names from the spreadsheet.")
              sys.exit(1)
              
-        account_cli_arg = args.account 
-        
-        matched_account = None
-        for valid_acc in valid_accounts:
-            # Match if CLI arg is a substring of the full name, case-insensitive
-            if account_cli_arg.lower() in valid_acc.lower():
-                matched_account = valid_acc
-                logger.info(f"Matched CLI argument '{account_cli_arg}' to sheet account: {valid_acc}")
-                break
-                
-        if not matched_account:
-            # Try matching against the first word (e.g., emoji or main name) if full substring match failed
-            for valid_acc in valid_accounts:
-                first_word = valid_acc.split()[0] if valid_acc else ''
-                if account_cli_arg.lower() == first_word.lower():
-                    matched_account = valid_acc
-                    logger.info(f"Matched CLI argument '{account_cli_arg}' to first word of sheet account: {valid_acc}")
-                    break
-            
-        if not matched_account:
-            valid_options_display = [a.split()[0] for a in valid_accounts if a] # Show first word as hint
-            logger.error(f"Invalid account name: '{args.account}'. Valid options based on sheet: {valid_options_display}")
-            logger.debug(f"Full valid account names found in sheet: {valid_accounts}")
-            sys.exit(1)
-            
-        account_name_validated = matched_account # Use the full, validated name going forward
-        logger.info(f"Processing for account: {account_name_validated}")
+        if account_name_mapped not in valid_accounts_from_sheet:
+             logger.error(f"Mapped account name '{account_name_mapped}' (from alias '{args.account}') not found in BackendData sheet (Column I).")
+             logger.debug(f"Valid accounts found in sheet: {valid_accounts_from_sheet}")
+             sys.exit(1)
+             
+        # 3. Use the validated full name
+        account_name_validated = account_name_mapped
+        logger.info(f"Processing for account: {account_name_validated} (mapped from alias '{args.account}')")
+
+        # Check Vertex AI env vars using config
+        # Note: categorizer.py also checks at import time, this is an additional check before processing.
+        if not config.GOOGLE_CLOUD_PROJECT:
+             logger.warning("GOOGLE_CLOUD_PROJECT environment variable not set. Categorization via AI will likely fail or use placeholder.")
+             # Depending on requirements, could exit here: sys.exit(1)
+        if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+             logger.warning("GOOGLE_APPLICATION_CREDENTIALS environment variable not set. Categorization via AI will likely fail.")
+             # Depending on requirements, could exit here: sys.exit(1)
 
         file_path = Path(args.file)
         if not file_path.is_file(): # Check if it's actually a file
@@ -134,12 +150,19 @@ def main():
         # --- Parsing Stage ---
         logger.info(f"Parsing file: {file_path}")
         parsed_data = None
-        # TODO: Implement parser selection logic in future iterations
-        # For now, assume SEB if account name contains 'seb'
-        if 'seb' in account_name_validated.lower(): 
+        # Update parser selection logic to use the *alias* (account_cli_arg)
+        # This assumes parser logic aligns with the aliases
+        if account_cli_arg == 'seb':
             parsed_data = parse_seb(file_path)
+        # elif account_cli_arg == 'revolut':
+            # parsed_data = parse_revolut(file_path) # Add when implemented
+        # elif account_cli_arg == 'firstcard':
+             # parsed_data = parse_firstcard(file_path) # Add when implemented
+        # elif account_cli_arg == 'strawberry':
+            # parsed_data = parse_strawberry(file_path) # Add when implemented
         else:
-            logger.error(f"No parser implemented yet for account type associated with '{account_name_validated}'. Only SEB is supported currently.")
+            # This case should be less likely now due to alias checking, but keep as fallback
+            logger.error(f"No parser logic defined for account alias '{account_cli_arg}'.")
             sys.exit(1)
 
         if parsed_data is None:
@@ -153,36 +176,61 @@ def main():
 
         # --- Transformation Stage ---
         logger.info("Transforming parsed data...")
+        # Pass the *validated full name* to transformation
         transformed_data = transform_transactions(parsed_data, account_name_validated)
 
-        if transformed_data is None:
-            logger.error("Transformation failed.")
-            sys.exit(1)
-        elif transformed_data.empty:
-            logger.warning("No transactions available after transformation. Exiting.")
+        # transform_transactions now returns list, check if empty
+        if not transformed_data:
+            logger.warning("No transactions available after transformation (or transformation failed). Exiting.")
             sys.exit(0)
         else:
-            logger.info(f"Successfully transformed {len(transformed_data)} transactions.")
+            logger.info(f"Successfully transformed {len(transformed_data)} transactions into list format.")
+
+            # ---vvv--- ADD SORTING STEP ---vvv---
+            logger.info(f"Sorting {len(transformed_data)} transactions by date...")
+            try:
+                # Sort the list of dictionaries in place based on the 'Date' key
+                transformed_data.sort(key=lambda txn: txn['Date'])
+                logger.info("Transactions sorted chronologically.")
+            except KeyError:
+                logger.error("Transformation failed to produce 'Date' key correctly. Cannot sort.")
+                sys.exit(1)
+            except Exception as sort_err:
+                 logger.error(f"Error during sorting: {sort_err}", exc_info=True)
+                 sys.exit(1)
+            # ---^^^--- END SORTING STEP ---^^^---
+
+        # --- Categorization Stage ---
+        logger.info("Starting AI categorization...")
+        final_transactions = []
+        for txn in tqdm(transformed_data, desc="Categorizing Transactions", unit="txn"):
+            original_memo = txn.get('Memo') # Get original memo safely
+
+            if original_memo: # Only call AI if there's an original memo
+                ai_category, ai_memo = categorize_transaction(original_memo)
+                txn['Category'] = ai_category
+                txn['Memo'] = ai_memo # Overwrite memo with AI version
+                logger.debug(f"AI Result for '{original_memo}': Cat='{ai_category}', Memo='{ai_memo}'")
+            else:
+                # If original memo was missing/empty, set UNCATEGORIZED and keep empty memo
+                txn['Category'] = "UNCATEGORIZED"
+                txn['Memo'] = "" # Ensure memo is empty string
+                logger.warning(f"Original memo missing/empty, setting category to UNCATEGORIZED. Data: {txn}")
+
+            final_transactions.append(txn)
+
+        logger.info(f"Finished AI categorization for {len(final_transactions)} transactions.")
+        # Optional: Log category distribution or count of UNCATEGORIZED
 
         # --- Upload Stage ---
-        logger.info(f"Appending {len(transformed_data)} transactions to 'New Transactions' tab...")
-        success = sheets_api.append_transactions(transformed_data)
+        logger.info(f"Appending {len(final_transactions)} transactions to '{config.NEW_TRANSACTIONS_SHEET_NAME}' tab...")
+        success = sheets_api.append_transactions(final_transactions)
         
         if success:
             logger.info("Successfully appended transactions to the Google Sheet.")
         else:
             logger.error("Failed to append transactions to the Google Sheet.")
             sys.exit(1)
-
-        # --- Vertex AI Initialization (Keep for future use) ---
-        # logger.info("Initializing Vertex AI client (for future categorization step)...")
-        # try:
-        #     vertex_ai = VertexAI() # Initialize to check config
-        #     logger.info("Vertex AI client initialized successfully.")
-        # except Exception as e:
-        #     logger.error(f"Failed to initialize Vertex AI client: {e}")
-            # Decide if this is critical - for Iteration 2, maybe just warn
-            # sys.exit(1)
 
         logger.info("Processing completed successfully")
         

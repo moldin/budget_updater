@@ -5,107 +5,115 @@ import numpy as np
 import pytest
 
 # Add src directory to sys.path
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from budget_updater.transformation import transform_transactions, TARGET_COLUMNS, PLACEHOLDER_CATEGORY, DEFAULT_STATUS
+# Import the function to test AND the constants from config
+from budget_updater.transformation import transform_transactions
+from budget_updater import config # Import config
 
+# Define fixtures for test data
 @pytest.fixture
 def sample_parsed_data() -> pd.DataFrame:
-    """Creates a sample DataFrame as output from a parser."""
+    """Provides a sample DataFrame as output by a parser."""
     data = {
-        'Date': pd.to_datetime(['2024-01-15', '2024-01-16', '2024-01-17', '2024-01-18']),
-        'Description': ['Expense 1', 'Income 1', 'Expense 2', 'Zero Amount'],
-        'Amount': [-100.50, 2000.00, -50.25, 0.00]
+        "Date": pd.to_datetime(["2024-01-15", "2024-01-16", "2024-01-17", "2024-01-18"]),
+        "Description": ["Expense 1", "Income 1", "Expense 2", "Zero Amount"],
+        "Amount": [-100.50, 2000.00, -50.25, 0.00]
     }
     return pd.DataFrame(data)
 
 @pytest.fixture
 def sample_parsed_data_with_nan() -> pd.DataFrame:
-    """Creates sample parsed data containing NaN values, then cleans like parser."""
+    """Provides data with NaNs/NaTs *after* parser cleaning would have happened."""
+    # Assume parser drops rows where critical data (Date, Amount) is unusable
+    # This fixture represents data ready for transformation
     data = {
-        'Date': pd.to_datetime(['2024-01-15', '2024-01-16', pd.NaT, '2024-01-18']),
-        'Description': ['Expense 1', None, 'Expense 2', 'Valid'], # None Description is handled
-        'Amount': [-100.50, 2000.00, -50.25, np.nan] # NaN Amount should be handled
+        "Date": pd.to_datetime(["2024-01-15", "2024-01-16"]),
+        "Description": ["Expense 1", None], # Description can be None/empty
+        "Amount": [-100.5, 2000.0]
     }
-    df = pd.DataFrame(data)
-    # Simulate parser cleanup for realistic input to transformer
-    df.dropna(subset=['Date', 'Amount'], inplace=True)
-    return df
+    return pd.DataFrame(data)
 
 def test_transform_transactions_success(sample_parsed_data: pd.DataFrame):
     """Tests successful transformation of typical parsed data."""
     account_name = "💰 SEB"
-    transformed_df = transform_transactions(sample_parsed_data, account_name)
-    
-    assert transformed_df is not None
-    assert not transformed_df.empty
-    assert len(transformed_df) == 4
-    assert list(transformed_df.columns) == TARGET_COLUMNS
-    
+    transformed_list = transform_transactions(sample_parsed_data, account_name) # Renamed variable
+
+    assert transformed_list is not None
+    assert isinstance(transformed_list, list) # Should return a list of dicts
+    assert len(transformed_list) == 4
+    assert all(isinstance(item, dict) for item in transformed_list)
+    # Use config.TARGET_COLUMNS for the check
+    assert all(list(item.keys()) == config.TARGET_COLUMNS for item in transformed_list)
+
     # Check first row (expense)
-    row1 = transformed_df.iloc[0]
+    row1 = transformed_list[0]
     assert row1['Date'] == '2024-01-15'
-    assert row1['Outflow'] == 100.50
-    assert row1['Inflow'] == 0.00
-    assert row1['Category'] == PLACEHOLDER_CATEGORY
+    assert row1['Outflow'] == '100,50' # Expect string format
+    assert row1['Inflow'] == ''
+    # Use config.PLACEHOLDER_CATEGORY for the check
+    assert row1['Category'] == config.PLACEHOLDER_CATEGORY
     assert row1['Account'] == account_name
     assert row1['Memo'] == 'Expense 1'
-    assert row1['Status'] == DEFAULT_STATUS
-    
+    # Use config.DEFAULT_STATUS for the check
+    assert row1['Status'] == config.DEFAULT_STATUS
+
     # Check second row (income)
-    row2 = transformed_df.iloc[1]
+    row2 = transformed_list[1]
     assert row2['Date'] == '2024-01-16'
-    assert row2['Outflow'] == 0.00
-    assert row2['Inflow'] == 2000.00
+    assert row2['Outflow'] == ''
+    assert row2['Inflow'] == '2000,00' # Expect string format
     assert row2['Memo'] == 'Income 1'
 
+    # Check third row (expense)
+    row3 = transformed_list[2]
+    assert row3['Date'] == '2024-01-17'
+    assert row3['Outflow'] == '50,25' # Expect string format
+    assert row3['Inflow'] == ''
+    assert row3['Memo'] == 'Expense 2'
+
     # Check fourth row (zero amount)
-    row4 = transformed_df.iloc[3]
+    row4 = transformed_list[3]
     assert row4['Date'] == '2024-01-18'
-    assert row4['Outflow'] == 0.00 # Zero amount treated as inflow by current logic (amount >= 0)
-    assert row4['Inflow'] == 0.00
+    assert row4['Outflow'] == ''
+    assert row4['Inflow'] == ''
     assert row4['Memo'] == 'Zero Amount'
-    
-    # Check dtypes (should be object/string for most, float for amounts)
-    assert transformed_df['Outflow'].dtype == 'float64'
-    assert transformed_df['Inflow'].dtype == 'float64'
-    assert transformed_df['Date'].dtype == 'object' # String date YYYY-MM-DD
 
 def test_transform_transactions_empty_input():
-    """Tests transformation with an empty input DataFrame."""
-    empty_df = pd.DataFrame(columns=['Date', 'Description', 'Amount'])
-    account_name = "💰 SEB"
-    transformed_df = transform_transactions(empty_df, account_name)
-    
-    assert transformed_df is not None
-    assert transformed_df.empty
-    assert list(transformed_df.columns) == TARGET_COLUMNS # Should still have correct columns
+    """Tests transformation with an empty DataFrame."""
+    empty_df = pd.DataFrame(columns=["Date", "Description", "Amount"])
+    transformed_list = transform_transactions(empty_df, "💰 SEB") # Renamed variable
+    assert isinstance(transformed_list, list)
+    assert len(transformed_list) == 0
 
-def test_transform_transactions_none_input():
-    """Tests transformation with None as input."""
-    account_name = "💰 SEB"
-    transformed_df = transform_transactions(None, account_name)
-    
-    assert transformed_df is not None
-    assert transformed_df.empty
-    assert list(transformed_df.columns) == TARGET_COLUMNS
+def test_transform_transactions_missing_columns():
+    """Tests transformation when input DataFrame is missing expected columns."""
+    # This scenario should ideally be caught by the parser, but test robustness
+    invalid_df = pd.DataFrame({"Date": [pd.Timestamp("2024-01-15")]})
+    # The function now handles this by logging an error and returning an empty list
+    result = transform_transactions(invalid_df, "💰 SEB")
+    assert result == [] # Expect an empty list
+    # We could also potentially check the logs here if logging is captured
 
 def test_transform_transactions_handles_cleaned_nan_data(sample_parsed_data_with_nan: pd.DataFrame):
     """Tests transformation handles data after parser has cleaned NaNs."""
-    # The fixture already simulates the parser dropping rows with NaT/NaN amounts
     account_name = "💰 SEB"
-    transformed_df = transform_transactions(sample_parsed_data_with_nan, account_name)
-    
-    assert transformed_df is not None
-    # Initial fixture has 4 rows, parser drops 2 (NaT date, NaN amount)
-    assert len(transformed_df) == 2 
-    assert list(transformed_df.columns) == TARGET_COLUMNS
-    
+    transformed_list = transform_transactions(sample_parsed_data_with_nan, account_name)
+
+    assert transformed_list is not None
+    assert isinstance(transformed_list, list)
+    assert len(transformed_list) == 2 # Fixture has 2 rows ready for transformation
+
     # Check remaining rows are transformed correctly
-    assert transformed_df.iloc[0]['Memo'] == 'Expense 1'
-    assert transformed_df.iloc[0]['Outflow'] == 100.50
-    assert transformed_df.iloc[1]['Memo'] == '' # Description was None, should be transformed to empty string by transformer
-    assert transformed_df.iloc[1]['Inflow'] == 2000.00
+    row1 = transformed_list[0]
+    assert row1['Memo'] == 'Expense 1'
+    assert row1['Outflow'] == '100,50' # Expect string format
+    assert row1['Inflow'] == ''
+
+    row2 = transformed_list[1]
+    assert row2['Memo'] == '' # Expect empty string for None/NaN description
+    assert row2['Outflow'] == ''
+    assert row2['Inflow'] == '2000,00' # Expect string format
 
 # TODO: Add tests for transformation logic specific to other account types 
 # (e.g., First Card where positive amount = outflow) when implemented. 

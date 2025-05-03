@@ -6,7 +6,7 @@ logger = logging.getLogger(__name__)
 
 def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
     """
-    Parses an SEB export file (CSV assumed).
+    Parses an SEB export file (xslx assumed).
 
     Args:
         file_path: Path to the SEB export file.
