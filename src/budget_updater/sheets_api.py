@@ -214,48 +214,62 @@ class SheetAPI:
             logger.error(f"Error appending dummy transaction: {error}")
             return False
 
-    def append_transactions(self, transactions):
-        """Append multiple transaction rows to New Transactions tab.
+    def append_transactions(self, transactions_df):
+        """Append rows from a DataFrame to the New Transactions tab.
         
         Args:
-            transactions: List of transaction dictionaries with keys:
-                DATE, OUTFLOW, INFLOW, CATEGORY, ACCOUNT, MEMO, STATUS
+            transactions_df: A pandas DataFrame with columns matching the 
+                             expected sheet structure (Date, Outflow, Inflow, etc.)
+                             and in the correct order.
+                             
+        Returns:
+            True if appending was successful, False otherwise.
         """
-        if not transactions:
-            logger.warning("No transactions to append")
+        if transactions_df is None or transactions_df.empty:
+            logger.warning("No transactions to append.")
+            # Return True because technically nothing failed, there was just nothing to do.
+            # The main script should handle the case of empty dataframes before calling.
+            return True 
+
+        # Ensure columns are in the exact order expected by the sheet
+        # This should already be handled by the transformation step, but double-check
+        expected_columns = ['Date', 'Outflow', 'Inflow', 'Category', 'Account', 'Memo', 'Status']
+        if list(transactions_df.columns) != expected_columns:
+            logger.error(f"DataFrame columns {list(transactions_df.columns)} do not match expected order {expected_columns}.")
             return False
             
-        # Convert transactions to row values
-        values = []
-        for t in transactions:
-            values.append([
-                t.get("DATE", ""),
-                t.get("OUTFLOW", ""),
-                t.get("INFLOW", ""),
-                t.get("CATEGORY", ""),
-                t.get("ACCOUNT", ""),
-                t.get("MEMO", ""),
-                t.get("STATUS", "✅")
-            ])
-            
+        # Convert DataFrame to list of lists for the API
+        # Ensure NaN values are converted to empty strings, which Sheets API handles better
+        values = transactions_df.fillna('').values.tolist()
+        
         body = {
             "values": values
         }
         
         try:
+            logger.info(f"Appending {len(values)} rows to {NEW_TRANSACTIONS_RANGE}")
             result = self.sheet.values().append(
                 spreadsheetId=SPREADSHEET_ID,
                 range=NEW_TRANSACTIONS_RANGE,
-                valueInputOption="USER_ENTERED",
+                valueInputOption="USER_ENTERED", # Let Sheets interpret types (e.g., numbers, dates)
                 insertDataOption="INSERT_ROWS",
                 body=body
             ).execute()
             
-            logger.debug(f"Append result: {result}")
+            updates = result.get('updates', {})
+            updated_rows = updates.get('updatedRows', 0)
+            logger.info(f"{updated_rows} rows successfully appended.")
+            # logger.debug(f"Append result: {result}")
             return True
             
         except HttpError as error:
             logger.error(f"Error appending transactions: {error}")
+            # Log more details from the error if possible
+            error_content = getattr(error, '_get_reason', lambda: "No details")()
+            logger.error(f"Error details: {error_content}")
+            return False
+        except Exception as e:
+            logger.exception(f"An unexpected error occurred during transaction append: {e}")
             return False
 
     def analyze_sheet_structure(self):

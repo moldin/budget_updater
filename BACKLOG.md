@@ -16,6 +16,7 @@ This document outlines the development backlog for the Bank Transaction Processo
 * **Configuration:** Keep sensitive information (API keys, Sheet IDs) and configurable parameters out of the code (use environment variables or configuration files).
 * **Error Handling:** Implement robust error handling and provide informative logging/messages to the user.
 * **PEP 8:** Follow standard Python style guidelines (PEP 8).
+* **Wait for Confirmation:** After proposing a file edit, wait for confirmation or indication that the change has been applied before proceeding with dependent steps.
 
 ## Iterations (Sprints)
 
