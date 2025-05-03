@@ -54,29 +54,32 @@ Each iteration aims to deliver a runnable version of the application with added 
 
 **Tasks:**
 
-- [ ] **CLI Arguments:** Refine CLI arguments to accept `--file <path_to_export>` and `--account <account_name>`. Validate the provided account name against the list read from `BackendData`.
-- [ ] **Parser Module:** Create a `parsers` module. Implement `parse_seb(file_path)` function.
-    * Handle CSV reading, potential header rows, and encoding.
-    * Extract `Bokföringsdatum`, `Text`, `Belopp`.
+- [x] **CLI Arguments:** Refine CLI arguments to accept `--file <path_to_export>` and `--account <account_name>`. Validate the provided account name against the list read from `BackendData`.
+- [x] **Parser Module:** Create a `parsers` module. Implement `parse_seb(file_path)` function.
+    * Handle ~~CSV reading~~ **Excel reading (.xlsx)**, potential header rows, and encoding.
+    * Extract `Bokföringsdatum`, `Text`, `Belopp` from `Sheet1`.
     * Handle potential errors during parsing.
-- [ ] **Transformation Logic:** Create a core transformation function/module.
+    * Add `openpyxl` dependency.
+- [x] **Transformation Logic:** Create a core transformation function/module.
     * Input: Raw transaction data (dict or object) from the parser.
     * Output: A dictionary matching the target sheet structure (`DATE`, `OUTFLOW`, `INFLOW`, `CATEGORY`, `ACCOUNT`, `MEMO`, `STATUS`).
     * Implement logic for `DATE` formatting.
     * Implement `OUTFLOW`/`INFLOW` logic based on the sign of `Belopp`.
+    * Format `OUTFLOW`/`INFLOW` as strings with comma decimal for Swedish locale, use empty string for zero.
     * Set `ACCOUNT` based on CLI argument.
     * Set `MEMO` from `Text`.
     * Set `STATUS` to ✅.
     * Set `CATEGORY` to a placeholder like "PENDING_AI".
-- [ ] **Main Script Logic:** Update the main script to:
+- [x] **Main Script Logic:** Update the main script to:
     * Call the appropriate parser based on (initially hardcoded for) SEB.
     * Iterate through parsed transactions.
     * Call the transformation logic for each transaction.
     * Collect the transformed data.
-- [ ] **Sheet Interaction (Write):** Update the sheet writing logic to append the list of *transformed* SEB transactions.
-- [ ] **Testing:** Add basic tests for SEB parsing and transformation logic.
+- [x] **Sheet Interaction (Write):** Update the sheet writing logic (`sheets_api.append_transactions`) to append the list of *transformed* SEB transactions.
+- [x] **Testing:** Add basic tests for SEB parsing and transformation logic.
+- [x] **Fixes:** Corrected Sheets API authentication token saving/loading (`pickle` issue). Adapted SEB parser for `.xlsx` input instead of CSV.
 
-**Deliverable:** A script that takes an SEB export file and account name, parses it, transforms the data (with placeholder category), and appends the results to the 'New Transactions' sheet.
+**Deliverable:** A script that takes an SEB export file (`.xlsx`) and account name, parses it, transforms the data (with placeholder category and correct currency formatting), and appends the results to the 'New Transactions' sheet. Authentication token persists correctly.
 
 ---
 
