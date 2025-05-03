@@ -10,6 +10,7 @@ This document outlines the development backlog for the Bank Transaction Processo
 * **Readability:** Write clear, self-documenting code with meaningful variable and function names. Add comments to explain the *why* behind complex logic, not just the *what*.
 * **Modularity:** Structure the code logically into modules (e.g., `parsers`, `categorizer`, `sheets_api`, `main`).
 * **Testing:** Write unit tests for core logic, especially parsing functions, transformation logic, and API interactions (potentially using mocks).
+* **GIT management:** Never push anything to git until we have verified that the code works.
 * **Dependency Management:** Use `uv` for managing Python dependencies and virtual environments.
 * **Type Hinting:** Use Python type hints for improved code clarity and static analysis.
 * **Configuration:** Keep sensitive information (API keys, Sheet IDs) and configurable parameters out of the code (use environment variables or configuration files).
@@ -28,18 +29,18 @@ Each iteration aims to deliver a runnable version of the application with added 
 
 **Tasks:**
 
-- [ ] **Project Init:** Set up the project directory structure in a well structured way (with src test data folders etc, use standard format for github repos for python projects) Initialize `git`. Initialize `uv` and create `pyproject.toml`. Remote repo: https://github.com/moldin/budget_updater.git
-- [ ] **Create venv:** Use 'uv' to create a virtual environment.
-- [ ] **Dependencies:** Add initial dependencies (`pandas`, `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`, `google-cloud-aiplatform`, `tqdm`).
-- [ ] **CLI Framework:** Set up basic CLI argument parsing (e.g., using `argparse`) to accept placeholder arguments.
-- [ ] **Google Sheets Auth:** Implement OAuth 2.0 flow for Google Sheets API. Store/retrieve credentials securely (token file).
-- [ ] **Sheet Interaction (Read):** Create a module (`sheets_api.py`?) to connect to the Google Sheet. See URLs in `PRD.md`file.
-- [ ] **Analyse Spreadsheet:** Read the tabs "Transactions", "New Transactions", "BackendData" and log and describe in detail what you find in a local file that could used as reference in the project. Specifically read the list of valid `ACCOUNT` names from `BackendData` (Column I) and `CATEGORIES`from `BackendData` (Column G). Also make note of which row the header is in "Transcations" tab and what the column names are. They should be the same as in "New Transactions". These column names are crucial when the script then remaps the bank export files.
-- [ ] **Vertex AI Auth:** Configure authentication for Vertex AI using environment variables (`GOOGLE_APPLICATION_CREDENTIALS`, project ID, location etc.). Test basic client initialization. See the `PRD.md` file for which values should be used.
-- [ ] **Sheet Interaction (Write):** Implement functionality to append a row of *dummy* data (with correct columns: `DATE`, `OUTFLOW`, `INFLOW`, `CATEGORY`, `ACCOUNT`, `MEMO`, `STATUS`) to the 'New Transactions' tab.
-- [ ] **README:** Create an initial `README.md` with setup instructions.
-- [ ] **`.gitignore`:** Add a standard Python `.gitignore` file.
-- [ ] **Confirm UAT:** Make sure that we have a way of testing the functionality so far. 
+- [x] **Project Init:** Set up the project directory structure in a well structured way (with src test data folders etc, use standard format for github repos for python projects) Initialize `git`. Initialize `uv` and create `pyproject.toml`. Remote repo: https://github.com/moldin/budget_updater.git
+- [x] **Create venv:** Use 'uv' to create a virtual environment.
+- [x] **Dependencies:** Add initial dependencies (`pandas`, `google-api-python-client`, `google-auth-oauthlib`, `google-auth-httplib2`, `google-cloud-aiplatform`, `tqdm`).
+- [x] **CLI Framework:** Set up basic CLI argument parsing (e.g., using `argparse`) to accept placeholder arguments.
+- [x] **Google Sheets Auth:** Implement OAuth 2.0 flow for Google Sheets API. Store/retrieve credentials securely (token file).
+- [x] **Sheet Interaction (Read):** Create a module (`sheets_api.py`?) to connect to the Google Sheet. See URLs in `PRD.md`file.
+- [x] **Analyse Spreadsheet:** Read the tabs "Transactions", "New Transactions", "BackendData" and log and describe in detail what you find in a local file that could used as reference in the project. Specifically read the list of valid `ACCOUNT` names from `BackendData` (Column I) and `CATEGORIES`from `BackendData` (Column G). Also make note of which row the header is in "Transcations" tab and what the column names are. They should be the same as in "New Transactions". These column names are crucial when the script then remaps the bank export files.
+- [x] **Vertex AI Auth:** Configure authentication for Vertex AI using environment variables (`GOOGLE_APPLICATION_CREDENTIALS`, project ID, location etc.). Test basic client initialization. See the `PRD.md` file for which values should be used.
+- [x] **Sheet Interaction (Write):** Implement functionality to append a row of *dummy* data (with correct columns: `DATE`, `OUTFLOW`, `INFLOW`, `CATEGORY`, `ACCOUNT`, `MEMO`, `STATUS`) to the 'New Transactions' tab.
+- [x] **README:** Create an initial `README.md` with setup instructions.
+- [x] **`.gitignore`:** Add a standard Python `.gitignore` file.
+- [x] **Confirm UAT:** Make sure that we have a way of testing the functionality so far. 
 - [ ] **Push to git:** When user confirms all works well, remember to push everything to git: https://github.com/moldin/budget_updater.git
 
 **Deliverable:** A runnable script that authenticates with Google Sheets, reads account names, authenticates with Vertex AI (basic init), and appends a hardcoded dummy transaction row to the 'New Transactions' sheet.
