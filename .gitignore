@@ -130,4 +130,7 @@ src/transaction_cat_test/
 
 # macOS specific
 .DS_Store
-**/.DS_Store 
+**/.DS_Store
+
+# Ignore specific sub-directories or sub-projects
+docs/agent-development-kit-crash-course/ 
