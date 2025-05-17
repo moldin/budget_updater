@@ -89,13 +89,13 @@ def categorize_transaction_with_adk(
         Returns a default error structure if categorization fails.
     """
     input_query = (
-        f"Categorize this transaction:\\n"
-        f"Date: {date_str}\\n"
-        f"Amount: {amount_str}\\n"
-        f"Description: {raw_description}\\n"
+        f"Categorize this transaction:\n"
+        f"Date: {date_str}\n"
+        f"Amount: {amount_str}\n"
+        f"Description: {raw_description}\n"
         f"Account: {account_name}"
     )
-    logger.info(f"Attempting to categorize transaction with ADK Runner. Input query: \\n{input_query}")
+    logger.info(f"Attempting to categorize transaction with ADK Runner. Input query: \n{input_query}")
 
     user_id = "budget_updater_user" # Static user ID for stateless calls
     session_id = str(uuid.uuid4()) # New session ID for each call for isolation
@@ -261,7 +261,7 @@ def categorize_transaction_with_adk(
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO,
+    logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     logger.info("Starting ADK Agent Service local test (with Runner)...")

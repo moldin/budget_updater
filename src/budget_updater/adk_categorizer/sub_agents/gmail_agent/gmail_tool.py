@@ -63,7 +63,8 @@ def _print_debug_email(email: EmailResult, index: int) -> None:
     if email.raw_subject:
         print(f"Subject: {email.raw_subject}")
     if email.raw_body_text:
-        print(email.raw_body_text)
+        #print(email.raw_body_text)
+        pass
     print(separator)
 
 # --- Gmail API Configuration ---
@@ -180,7 +181,7 @@ def query_gmail_emails_structured(
     query: str,
     after_date: Optional[str] = None,  # YYYY-MM-DD
     before_date: Optional[str] = None,  # YYYY-MM-DD
-    max_results: int = 5,
+    max_results: int = 15,
     *,
     debug: bool = False,
 ) -> List[dict]:
@@ -199,6 +200,7 @@ def query_gmail_emails_structured(
         A list of dictionaries, where each dictionary contains the extracted content
         of an email matching the query. Returns an empty list if no matches or an error occurs.
     """
+    print(f"=========== TOOL CALL: Querying Gmail for: Max results: {max_results} Query: {query} ===========")
     service = get_gmail_service()
     if not service:
         return {"status": "error", "message": "Failed to connect to Gmail service."}
