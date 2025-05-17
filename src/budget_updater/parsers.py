@@ -79,13 +79,6 @@ def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
             amount_col: 'ParsedAmount'
         }, inplace=True)
 
-        # --- Debugging: Log raw ParsedAmount for the specific problematic description ---
-        # This is before any type conversion on ParsedAmount, only after renaming.
-        problem_desc = "46725886444"
-        if problem_desc in parsed_df['ParsedDescription'].values:
-            raw_amount_for_problem_desc = parsed_df.loc[parsed_df['ParsedDescription'] == problem_desc, 'ParsedAmount'].iloc[0]
-            logger.info(f"DEBUG: Raw 'ParsedAmount' for description '{problem_desc}' (before conversion): '{raw_amount_for_problem_desc}', type: {type(raw_amount_for_problem_desc)}")
-        # --- End Debugging ---
 
         # --- Type Conversion and Validation ---
         # Convert Date column to datetime objects (YYYY-MM-DD format assumed)
@@ -100,27 +93,9 @@ def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
 
         # Convert Amount column to numeric, handling potential thousand separators (like spaces) and decimal commas
         try:
-            # --- Debugging: Log ParsedAmount just before and after string operations for the problematic description ---
-            if problem_desc in parsed_df['ParsedDescription'].values:
-                 pre_str_ops_amount = parsed_df.loc[parsed_df['ParsedDescription'] == problem_desc, 'ParsedAmount'].iloc[0]
-                 logger.info(f"DEBUG: 'ParsedAmount' for '{problem_desc}' (before string replace/astype(str)): '{pre_str_ops_amount}', type: {type(pre_str_ops_amount)}")
-            # --- End Debugging ---
-
             parsed_df['ParsedAmount'] = parsed_df['ParsedAmount'].astype(str).str.replace(r'[\s\xa0]+', '', regex=True).str.replace(',', '.', regex=False)
-            
-            # --- Debugging: Log ParsedAmount after string operations but before to_numeric ---
-            if problem_desc in parsed_df['ParsedDescription'].values:
-                post_str_ops_amount = parsed_df.loc[parsed_df['ParsedDescription'] == problem_desc, 'ParsedAmount'].iloc[0]
-                logger.info(f"DEBUG: 'ParsedAmount' for '{problem_desc}' (after string replace, before to_numeric): '{post_str_ops_amount}'")
-            # --- End Debugging ---
 
             parsed_df['ParsedAmount'] = pd.to_numeric(parsed_df['ParsedAmount'], errors='coerce')
-            
-            # --- Debugging: Log ParsedAmount after to_numeric ---
-            if problem_desc in parsed_df['ParsedDescription'].values:
-                post_numeric_amount = parsed_df.loc[parsed_df['ParsedDescription'] == problem_desc, 'ParsedAmount'].iloc[0]
-                logger.info(f"DEBUG: 'ParsedAmount' for '{problem_desc}' (after to_numeric): '{post_numeric_amount}', type: {type(post_numeric_amount)}")
-            # --- End Debugging ---
 
             if parsed_df['ParsedAmount'].isnull().any():
                 null_amounts_count = parsed_df['ParsedAmount'].isnull().sum()
@@ -138,15 +113,6 @@ def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
         dropped_count = original_count - len(parsed_df)
         if dropped_count > 0:
              logger.info(f"Dropped {dropped_count} rows due to parsing errors (Date or Amount).")
-
-        # --- Debugging: Log final ParsedAmount for the problematic description if it wasn't dropped ---
-        if problem_desc in parsed_df['ParsedDescription'].values:
-            final_amount_for_problem_desc = parsed_df.loc[parsed_df['ParsedDescription'] == problem_desc, 'ParsedAmount'].iloc[0]
-            logger.info(f"DEBUG: Final 'ParsedAmount' for description '{problem_desc}' (after dropna): '{final_amount_for_problem_desc}'")
-        else:
-            if 'raw_amount_for_problem_desc' in locals(): # Check if we logged it initially
-                 logger.info(f"DEBUG: Row with description '{problem_desc}' was dropped during processing (likely due to NaN Amount after conversion).")
-        # --- End Debugging ---
 
         logger.info(f"Successfully parsed {len(parsed_df)} transactions from {file_path}")
         return parsed_df
