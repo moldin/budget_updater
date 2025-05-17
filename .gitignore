@@ -126,4 +126,8 @@ credentials/
 ~$*.xlsx*
 
 # Test directories
-src/transaction_cat_test/ 
+src/transaction_cat_test/
+
+# macOS specific
+.DS_Store
+**/.DS_Store 
