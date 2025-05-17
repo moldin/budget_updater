@@ -4,8 +4,8 @@ from typing import Dict
 
 # --- AI Model Configuration ---
 # Ensure GEMINI_MODEL_ID is defined, preferably from env var with a default
-DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash-preview-04-17" # Changed to a more general version
-#DEFAULT_GEMINI_MODEL_ID = "gemini-2.0-flash" # Changed to a more general version
+#DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash-preview-04-17" # Changed to a more general version
+DEFAULT_GEMINI_MODEL_ID = "gemini-2.0-flash" # Changed to a more general version
 GEMINI_MODEL_ID = os.environ.get("GEMINI_MODEL_ID", DEFAULT_GEMINI_MODEL_ID)
 
 # --- Google API Configuration ---

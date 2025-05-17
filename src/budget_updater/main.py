@@ -18,7 +18,7 @@ from .parsers import PARSER_REGISTRY
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[logging.StreamHandler(sys.stdout)],
 )
@@ -62,7 +62,14 @@ def parse_args(): # Removed valid_accounts_list as input for now
         help="Analyze spreadsheet structure and save to sheet_analysis.md"
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Handle verbose logging
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.info("Verbose logging enabled.")
+    
+    return args
 
 
 def init_adk():
@@ -289,9 +296,6 @@ def main():
     logger.info("Loaded environment variables from .env file (if present).")
 
     args = parse_args()
-
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
 
     logger.info("Starting Budget Updater")
 
