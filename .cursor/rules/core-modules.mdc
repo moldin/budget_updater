@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Core Modules Guide
+
+## Module Dependencies and Interactions
+
+### Main Application Flow
+1. [main.py](mdc:Budget_updater/src/budget_updater/main.py) orchestrates the application flow:
+   - Loads configuration from [config.py](mdc:Budget_updater/src/budget_updater/config.py)
+   - Uses [sheets_api.py](mdc:Budget_updater/src/budget_updater/sheets_api.py) for data retrieval
+   - Processes data through [parsers.py](mdc:Budget_updater/src/budget_updater/parsers.py)
+   - Applies transformations via [transformation.py](mdc:Budget_updater/src/budget_updater/transformation.py)
+   - Categorizes transactions using [categorizer.py](mdc:Budget_updater/src/budget_updater/categorizer.py)
+   - Integrates with AI via [vertex_ai.py](mdc:Budget_updater/src/budget_updater/vertex_ai.py)
+
+### Key Module Responsibilities
+
+#### Configuration Management
+- [config.py](mdc:Budget_updater/src/budget_updater/config.py) handles:
+  - Environment variables
+  - API credentials
+  - Application settings
+  - Sheet configurations
+
+#### Data Processing
+- [parsers.py](mdc:Budget_updater/src/budget_updater/parsers.py) handles:
+  - Input data parsing
+  - Data validation
+  - Format conversion
+
+#### Data Transformation
+- [transformation.py](mdc:Budget_updater/src/budget_updater/transformation.py) manages:
+  - Data cleaning
+  - Format standardization
+  - Data structure modifications
+
+#### AI Integration
+- [vertex_ai.py](mdc:Budget_updater/src/budget_updater/vertex_ai.py) provides:
+  - AI model integration
+  - Prediction services
+  - Model configuration
+
+#### External Integration
+- [sheets_api.py](mdc:Budget_updater/src/budget_updater/sheets_api.py) handles:
+  - Google Sheets authentication
+  - Data reading/writing
+  - Sheet operations
+
+## Error Handling
+- Each module implements its own error handling
+- Errors are propagated up to main.py for centralized handling
+- Configuration errors are handled in config.py
+- API errors are managed in sheets_api.py

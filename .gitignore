@@ -113,4 +113,10 @@ credentials.json
 *.credentials
 data/output/
 data/temp/
-credentials/ 
+credentials/
+
+# Cursor specific
+.cursor/cache/
+.cursor/temp/
+.cursor/logs/
+*.cursor-temp 

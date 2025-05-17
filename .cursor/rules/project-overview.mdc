@@ -1,0 +1,35 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Budget Updater Project Overview
+
+This project is a Python-based budget management system that integrates with Google Sheets and uses AI for transaction categorization.
+
+## Main Components
+
+### Core Files
+- [main.py](mdc:Budget_updater/src/budget_updater/main.py) - The main entry point of the application
+- [config.py](mdc:Budget_updater/src/budget_updater/config.py) - Configuration management and settings
+- [sheets_api.py](mdc:Budget_updater/src/budget_updater/sheets_api.py) - Google Sheets integration
+- [categorizer.py](mdc:Budget_updater/src/budget_updater/categorizer.py) - Transaction categorization logic
+- [transformation.py](mdc:Budget_updater/src/budget_updater/transformation.py) - Data transformation utilities
+- [parsers.py](mdc:Budget_updater/src/budget_updater/parsers.py) - Data parsing utilities
+- [vertex_ai.py](mdc:Budget_updater/src/budget_updater/vertex_ai.py) - Google Vertex AI integration
+
+### Project Structure
+- `src/budget_updater/` - Main package directory
+- `tests/` - Test files
+- `data/` - Data storage directory
+- `credentials/` - API credentials and configuration
+
+### Configuration
+- [.env](mdc:Budget_updater/.env) - Environment variables
+- [pyproject.toml](mdc:Budget_updater/pyproject.toml) - Project dependencies and metadata
+
+### Documentation
+- [README.md](mdc:Budget_updater/README.md) - Project documentation
+- [PRD.md](mdc:Budget_updater/PRD.md) - Product Requirements Document
+- [BACKLOG.md](mdc:Budget_updater/BACKLOG.md) - Project backlog
+- [RETROSPECTIVES.md](mdc:Budget_updater/RETROSPECTIVES.md) - Project retrospectives

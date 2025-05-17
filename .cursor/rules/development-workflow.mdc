@@ -1,0 +1,45 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Development Workflow
+
+## Setup
+1. Create and activate a virtual environment:
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # On Unix/macOS
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -e .
+   ```
+
+3. Set up environment variables:
+   - Copy `.env.example` to `.env`
+   - Fill in required credentials and configuration
+
+## Running the Application
+- Main entry point: [run.py](mdc:Budget_updater/run.py)
+- Execute with: `python run.py`
+
+## Testing
+- Test files are located in the `tests/` directory
+- Run tests with: `pytest`
+
+## Code Organization
+- Core business logic is in `src/budget_updater/`
+- Each module has a specific responsibility:
+  - [main.py](mdc:Budget_updater/src/budget_updater/main.py) - Application orchestration
+  - [sheets_api.py](mdc:Budget_updater/src/budget_updater/sheets_api.py) - External API integration
+  - [categorizer.py](mdc:Budget_updater/src/budget_updater/categorizer.py) - Business logic
+  - [config.py](mdc:Budget_updater/src/budget_updater/config.py) - Configuration management
+
+## Best Practices
+1. Follow PEP 8 style guide
+2. Write tests for new features
+3. Update documentation when making changes
+4. Use type hints in Python code
+5. Keep credentials secure and never commit them to version control
