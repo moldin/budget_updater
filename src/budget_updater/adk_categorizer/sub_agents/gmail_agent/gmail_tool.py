@@ -52,6 +52,20 @@ class EmailResult:
     raw_from: Optional[str] = None
     raw_body_text: Optional[str] = None
 
+
+def _print_debug_email(email: EmailResult, index: int) -> None:
+    """Pretty print the fetched email for debugging purposes."""
+    separator = "-" * 40
+    print(f"\n{separator}\nEmail {index}\n{separator}")
+    print(f"Date: {email.date}")
+    if email.raw_from:
+        print(f"From: {email.raw_from}")
+    if email.raw_subject:
+        print(f"Subject: {email.raw_subject}")
+    if email.raw_body_text:
+        print(email.raw_body_text)
+    print(separator)
+
 # --- Gmail API Configuration ---
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] # Read-only access
 
@@ -164,10 +178,12 @@ def get_email_details(service, user_id, msg_id):
 
 def query_gmail_emails_structured(
     query: str,
-    after_date: Optional[str] = None, # YYYY-MM-DD
-    before_date: Optional[str] = None, # YYYY-MM-DD
-    max_results: int = 5
-    ) -> List[dict]:
+    after_date: Optional[str] = None,  # YYYY-MM-DD
+    before_date: Optional[str] = None,  # YYYY-MM-DD
+    max_results: int = 5,
+    *,
+    debug: bool = False,
+) -> List[dict]:
     """
     Searches Gmail for emails based on a query and date range, then extracts structured content.
     This tool is designed to be called by an ADK agent.
@@ -177,6 +193,7 @@ def query_gmail_emails_structured(
         after_date: Optional. Search for emails received after this date (YYYY-MM-DD).
         before_date: Optional. Search for emails received before this date (YYYY-MM-DD).
         max_results: The maximum number of emails to return.
+        debug: If True, print each fetched email to stdout for debugging.
 
     Returns:
         A list of dictionaries, where each dictionary contains the extracted content
@@ -209,23 +226,24 @@ def query_gmail_emails_structured(
             return {"status": "success", "emails": []}
 
         logger.debug("Found %d email(s)", len(messages))
-        for msg_metadata in messages:
+        for idx, msg_metadata in enumerate(messages, start=1):
             msg_id = msg_metadata["id"]
             email_content = get_email_details(service, "me", msg_id)
             if not email_content:
                 continue
-            extracted_emails.append(
-                EmailResult(
-                    date=email_content.get("date", "Unknown Date"),
-                    amount="0,00",  # TODO: parse amount
-                    company="Unknown Company",  # TODO: parse company
-                    summary=email_content.get("snippet", "No snippet available."),
-                    payment_details="Unknown",
-                    raw_subject=email_content.get("subject"),
-                    raw_from=email_content.get("from"),
-                    raw_body_text=email_content.get("body_text")[:1000],
-                )
+            email = EmailResult(
+                date=email_content.get("date", "Unknown Date"),
+                amount="0,00",  # TODO: parse amount
+                company="Unknown Company",  # TODO: parse company
+                summary=email_content.get("snippet", "No snippet available."),
+                payment_details="Unknown",
+                raw_subject=email_content.get("subject"),
+                raw_from=email_content.get("from"),
+                raw_body_text=email_content.get("body_text")[:1000],
             )
+            extracted_emails.append(email)
+            if debug:
+                _print_debug_email(email, idx)
 
         return {"status": "success", "emails": [e.__dict__ for e in extracted_emails]}
 
@@ -237,65 +255,49 @@ def query_gmail_emails_structured(
         return {"status": "error", "message": f"Unexpected error: {e}"}
 
 
-if __name__ == '__main__':
-    # Example usage:
-    # Ensure client_secret.json is in ./credentials/ (relative to this script if run directly)
-    # For the agent, it will be relative to the project root due to main_budget_config
-    
-    # Create dummy credentials dir if it doesn't exist for local testing
+def main() -> None:
+    """Simple manual test harness for the Gmail tool."""
     if not CREDENTIALS_DIR.exists():
         os.makedirs(CREDENTIALS_DIR)
-        print(f"Created dummy '{CREDENTIALS_DIR}' for local testing if you haven't set up OAuth yet.")
+        print(
+            f"Created dummy '{CREDENTIALS_DIR}' for local testing if you haven't set up OAuth yet."
+        )
         print(f"Make sure '{CLIENT_SECRET_FILE.name}' is in '{CREDENTIALS_DIR}'.")
-
 
     # Test Case 1: Basic search
     print("\n--- Test Case 1: Basic Search (No Dates) ---")
     test_query_1 = "Google Cloud"
-    emails_found_1 = query_gmail_emails_structured(query=test_query_1, max_results=2)
-    print(f"Query: '{test_query_1}'")
-    if emails_found_1["status"] == "success":
-        print(f"Found {len(emails_found_1['emails'])} emails.")
-        for i, email in enumerate(emails_found_1['emails']):
-            print(f"  Email {i+1}:")
-            print(f"    Date: {email.get('date')}")
-            print(f"    From: {email.get('raw_from')}")
-            print(f"    Subject: {email.get('raw_subject')}")
-            print(f"    Summary (Snippet): {email.get('summary')}")
-            # print(f"    Body (first 200 chars): {email.get('raw_body_text', '')[:200]}")
-    else:
-        print(f"Error: {emails_found_1.get('message')}")
+    query_gmail_emails_structured(query=test_query_1, max_results=2, debug=True)
 
     # Test Case 2: Search with dates
     print("\n--- Test Case 2: Search with Dates ---")
     test_query_2 = "Netflix"
-    after = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
-    before = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-    emails_found_2 = query_gmail_emails_structured(query=test_query_2, after_date=after, before_date=before, max_results=1)
-    print(f"Query: '{test_query_2}', After: {after}, Before: {before}")
-
-    if emails_found_2["status"] == "success":
-        print(f"Found {len(emails_found_2['emails'])} emails.")
-        for i, email in enumerate(emails_found_2['emails']):
-            print(f"  Email {i+1}:")
-            print(f"    Date: {email.get('date')}")
-            print(f"    From: {email.get('raw_from')}")
-            print(f"    Subject: {email.get('raw_subject')}")
-            print(f"    Summary (Snippet): {email.get('summary')}")
-    else:
-        print(f"Error: {emails_found_2.get('message')}")
+    after = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    before = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    query_gmail_emails_structured(
+        query=test_query_2,
+        after_date=after,
+        before_date=before,
+        max_results=1,
+        debug=True,
+    )
 
     # Test Case 3: No results expected (adjust query if needed)
     print("\n--- Test Case 3: No Results Expected ---")
-    test_query_3 = "kjsdhfkjsdhfkjhsdfkjhsdkfjh" # gibberish
-    emails_found_3 = query_gmail_emails_structured(query=test_query_3, max_results=1)
-    print(f"Query: '{test_query_3}'")
-    if emails_found_3["status"] == "success":
-        print(f"Found {len(emails_found_3['emails'])} emails (expected 0).")
-    else:
-        print(f"Error: {emails_found_3.get('message')}")
+    test_query_3 = "kjsdhfkjsdhfkjhsdfkjhsdkfjh"  # gibberish
+    query_gmail_emails_structured(query=test_query_3, max_results=1, debug=True)
 
     print("\nNOTE: If you see OAuth errors or prompts, you need to:")
-    print(f"1. Ensure '{main_budget_config.CLIENT_SECRET_FILENAME}' is in the '{main_budget_config.CREDENTIALS_DIR}' directory.")
-    print(f"2. Run the script once to go through the OAuth flow. '{main_budget_config.TOKEN_PICKLE_FILENAME}' will be created.")
-    print(f"   The script might try to open a browser window for authentication.") 
+    print(
+        f"1. Ensure '{main_budget_config.CLIENT_SECRET_FILENAME}' is in the '{main_budget_config.CREDENTIALS_DIR}' directory."
+    )
+    print(
+        f"2. Run the script once to go through the OAuth flow. '{main_budget_config.TOKEN_PICKLE_FILENAME}' will be created."
+    )
+    print(
+        "   The script might try to open a browser window for authentication."
+    )
+
+
+if __name__ == "__main__":
+    main()
