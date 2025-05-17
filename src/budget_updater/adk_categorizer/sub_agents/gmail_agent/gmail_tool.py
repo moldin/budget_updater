@@ -1,18 +1,23 @@
 import os
 import pickle
-from google_auth_oauthlib.flow import InstalledAppFlow
+import base64
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import List, Optional
+
+from bs4 import BeautifulSoup
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pydantic import BaseModel, Field
-from typing import List, Optional
-import base64
-import re
-from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
-from budget_updater import config as main_budget_config # Assuming main config has credential paths
-from pathlib import Path
+
+from budget_updater import config as main_budget_config  # Paths to creds
+
+logger = logging.getLogger(__name__)
 
 
 # --- Define Output Schema ---
@@ -33,6 +38,20 @@ class EmailContent(BaseModel):
         description="The payment details of the purchase. E.g. 'Nordea', 'SEB', 'PayPal', 'FirstCard', 'Revolut', 'Strawberry', 'MasterCard ****6442', 'Apple Pay', 'Unknown'"
     )
 
+
+@dataclass
+class EmailResult:
+    """Internal representation of an extracted email."""
+
+    date: str
+    amount: str
+    company: str
+    summary: str
+    payment_details: str
+    raw_subject: Optional[str] = None
+    raw_from: Optional[str] = None
+    raw_body_text: Optional[str] = None
+
 # --- Gmail API Configuration ---
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'] # Read-only access
 
@@ -43,42 +62,39 @@ TOKEN_PICKLE_FILE = main_budget_config.TOKEN_PICKLE_FILE_PATH
 
 
 def get_gmail_service():
-    """Shows basic usage of the Gmail API.
-    Lists the user's Gmail labels.
-    """
+    """Authenticate and build a Gmail service client."""
     creds = None
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if TOKEN_PICKLE_FILE.exists():
-        with open(TOKEN_PICKLE_FILE, 'rb') as token:
+        with open(TOKEN_PICKLE_FILE, "rb") as token:
             creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
+
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
+            logger.debug("Refreshing Gmail credentials")
             creds.refresh(Request())
         else:
             if not CLIENT_SECRET_FILE.exists():
                 raise FileNotFoundError(
-                    f"OAuth client secret file not found at {CLIENT_SECRET_FILE}. "
-                    f"Please download it from Google Cloud Console and place it there."
+                    f"OAuth client secret file not found at {CLIENT_SECRET_FILE}."
                 )
-            flow = InstalledAppFlow.from_client_secrets_file(
-                CLIENT_SECRET_FILE, SCOPES)
+            logger.info("Running Gmail OAuth flow")
+            flow = InstalledAppFlow.from_client_secrets_file(CLIENT_SECRET_FILE, SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
+
         os.makedirs(CREDENTIALS_DIR, exist_ok=True)
-        with open(TOKEN_PICKLE_FILE, 'wb') as token:
+        with open(TOKEN_PICKLE_FILE, "wb") as token:
             pickle.dump(creds, token)
+
     try:
-        service = build('gmail', 'v1', credentials=creds)
+        service = build("gmail", "v1", credentials=creds)
+        logger.debug("Gmail service built successfully")
         return service
     except HttpError as error:
-        print(f'An error occurred: {error}')
+        logger.error("Failed to build Gmail service: %s", error)
         return None
 
 def get_email_details(service, user_id, msg_id):
-    """Get intricate details of an email."""
+    """Retrieve detailed information for a single email."""
     try:
         message = service.users().messages().get(userId=user_id, id=msg_id, format='full').execute()
         payload = message['payload']
@@ -142,7 +158,7 @@ def get_email_details(service, user_id, msg_id):
 
         return email_data
     except HttpError as error:
-        print(f'An error occurred while fetching email details: {error}')
+        logger.error("Error fetching email details: %s", error)
         return None
 
 
@@ -172,52 +188,52 @@ def query_gmail_emails_structured(
 
     search_query = query
     if after_date:
-        # Gmail format is YYYY/MM/DD
         search_query += f" after:{after_date.replace('-', '/')}"
     if before_date:
         search_query += f" before:{before_date.replace('-', '/')}"
-    
-    print(f"Gmail search query: {search_query}")
+
+    logger.debug("Gmail search query: %s", search_query)
 
     try:
-        results = service.users().messages().list(
-            userId='me', 
-            q=search_query,
-            maxResults=max_results
-        ).execute()
-        messages = results.get('messages', [])
-        
-        extracted_emails = []
+        results = (
+            service.users()
+            .messages()
+            .list(userId="me", q=search_query, maxResults=max_results)
+            .execute()
+        )
+        messages = results.get("messages", [])
+
+        extracted_emails: List[EmailResult] = []
         if not messages:
-            print("No emails found.")
+            logger.debug("No emails found")
             return {"status": "success", "emails": []}
-        else:
-            print(f"Found {len(messages)} email(s).")
-            for msg_metadata in messages:
-                msg_id = msg_metadata['id']
-                email_content = get_email_details(service, 'me', msg_id)
-                if email_content:
-                    # Here you might want to add logic to parse the email_content
-                    # (subject, body_text, body_html) to fit the EmailContent schema.
-                    # This is a placeholder:
-                    extracted_info = {
-                        "date": email_content.get("date", "Unknown Date"),
-                        "amount": "0,00", # Placeholder, extract from email
-                        "company": "Unknown Company", # Placeholder, extract from email
-                        "summary": email_content.get("snippet", "No snippet available."),
-                        "payment_details": "Unknown", # Placeholder
-                        "raw_subject": email_content.get("subject"),
-                        "raw_from": email_content.get("from"),
-                        "raw_body_text": email_content.get("body_text")[:1000] # Truncate for brevity
-                    }
-                    extracted_emails.append(extracted_info)
-            return {"status": "success", "emails": extracted_emails}
+
+        logger.debug("Found %d email(s)", len(messages))
+        for msg_metadata in messages:
+            msg_id = msg_metadata["id"]
+            email_content = get_email_details(service, "me", msg_id)
+            if not email_content:
+                continue
+            extracted_emails.append(
+                EmailResult(
+                    date=email_content.get("date", "Unknown Date"),
+                    amount="0,00",  # TODO: parse amount
+                    company="Unknown Company",  # TODO: parse company
+                    summary=email_content.get("snippet", "No snippet available."),
+                    payment_details="Unknown",
+                    raw_subject=email_content.get("subject"),
+                    raw_from=email_content.get("from"),
+                    raw_body_text=email_content.get("body_text")[:1000],
+                )
+            )
+
+        return {"status": "success", "emails": [e.__dict__ for e in extracted_emails]}
 
     except HttpError as error:
-        print(f'An error occurred during Gmail search: {error}')
+        logger.error("Gmail API error: %s", error)
         return {"status": "error", "message": f"Gmail API error: {error}"}
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.exception("Unexpected error during Gmail search")
         return {"status": "error", "message": f"Unexpected error: {e}"}
 
 
