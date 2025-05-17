@@ -1,7 +1,9 @@
 import logging
 import pandas as pd
-from typing import List, Dict, Any, Optional
-from . import config # Import config
+from typing import List, Optional
+
+from . import config  # Import config
+from .models import Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ def format_currency(value: float) -> str:
     # Format to 2 decimal places, replace dot with comma
     return f"{value:.2f}".replace('.', ',')
 
-def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str) -> List[Dict[str, Any]]:
+def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str) -> List[Transaction]:
     """
     Transforms parsed transaction data into the structure required by the Google Sheet.
 
@@ -27,8 +29,8 @@ def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str)
         account_name: The target account name for the 'Account' column.
 
     Returns:
-        A list of dictionaries, where each dictionary represents a transaction row
-        ready for upload, or an empty list if input is invalid or empty.
+        A list of :class:`Transaction` instances ready for upload,
+        or an empty list if input is invalid or empty.
     """
     if parsed_df is None or parsed_df.empty:
         logger.warning("Transformation skipped: Input DataFrame is None or empty.")
@@ -41,7 +43,7 @@ def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str)
         logger.error(f"Transformation failed: Missing expected column(s) in parsed data: {missing}")
         return [] # Return empty list
 
-    transformed_data = []
+    transformed_data: List[Transaction] = []
     for _, row in parsed_df.iterrows():
         try:
             amount = row['ParsedAmount']
@@ -51,23 +53,25 @@ def transform_transactions(parsed_df: Optional[pd.DataFrame], account_name: str)
             # Handle potential NaN in Description - already handled by parser, but keep check
             memo = str(row['ParsedDescription']) if pd.notna(row['ParsedDescription']) else ''
 
-            transaction_dict = {
-                'Date': row['ParsedDate'].strftime('%Y-%m-%d'), # Format date as YYYY-MM-DD string
-                'Outflow': format_currency(outflow),
-                'Inflow': format_currency(inflow),
-                'Category': config.PLACEHOLDER_CATEGORY, # Use config constant
-                'Account': account_name,
-                'Memo': memo,
-                'Status': config.DEFAULT_STATUS # Use config constant
-            }
-            transformed_data.append(transaction_dict)
+            txn = Transaction(
+                date=row['ParsedDate'].strftime('%Y-%m-%d'),
+                outflow=format_currency(outflow),
+                inflow=format_currency(inflow),
+                category=config.PLACEHOLDER_CATEGORY,
+                account=account_name,
+                memo=memo,
+                status=config.DEFAULT_STATUS,
+            )
+            transformed_data.append(txn)
 
         except Exception as e:
             logger.error(f"Error transforming row: {row}. Error: {e}", exc_info=True)
             # Optionally skip the row or handle differently
             continue # Skip rows that cause errors during transformation
 
-    logger.info(f"Successfully transformed {len(transformed_data)} rows into list of dicts.")
+    logger.info(
+        f"Successfully transformed {len(transformed_data)} rows into dataclass list."
+    )
     return transformed_data
 
 # Example usage (requires a parsed DataFrame):

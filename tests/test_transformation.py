@@ -9,6 +9,7 @@ import pytest
 
 # Import the function to test AND the constants from config
 from budget_updater.transformation import transform_transactions
+from budget_updater.models import Transaction
 from budget_updater import config # Import config
 
 # Define fixtures for test data
@@ -37,47 +38,45 @@ def sample_parsed_data_with_nan() -> pd.DataFrame:
 def test_transform_transactions_success(sample_parsed_data: pd.DataFrame):
     """Tests successful transformation of typical parsed data."""
     account_name = "💰 SEB"
-    transformed_list = transform_transactions(sample_parsed_data, account_name) # Renamed variable
+    transformed_list = transform_transactions(sample_parsed_data, account_name)
 
     assert transformed_list is not None
-    assert isinstance(transformed_list, list) # Should return a list of dicts
+    assert isinstance(transformed_list, list)
     assert len(transformed_list) == 4
-    assert all(isinstance(item, dict) for item in transformed_list)
-    # Use config.TARGET_COLUMNS for the check
-    assert all(list(item.keys()) == config.TARGET_COLUMNS for item in transformed_list)
+    assert all(isinstance(item, Transaction) for item in transformed_list)
 
     # Check first row (expense)
     row1 = transformed_list[0]
-    assert row1['Date'] == '2024-01-15'
-    assert row1['Outflow'] == '100,50' # Expect string format
-    assert row1['Inflow'] == ''
+    assert row1.date == '2024-01-15'
+    assert row1.outflow == '100,50'
+    assert row1.inflow == ''
     # Use config.PLACEHOLDER_CATEGORY for the check
-    assert row1['Category'] == config.PLACEHOLDER_CATEGORY
-    assert row1['Account'] == account_name
-    assert row1['Memo'] == 'Expense 1'
+    assert row1.category == config.PLACEHOLDER_CATEGORY
+    assert row1.account == account_name
+    assert row1.memo == 'Expense 1'
     # Use config.DEFAULT_STATUS for the check
-    assert row1['Status'] == config.DEFAULT_STATUS
+    assert row1.status == config.DEFAULT_STATUS
 
     # Check second row (income)
     row2 = transformed_list[1]
-    assert row2['Date'] == '2024-01-16'
-    assert row2['Outflow'] == ''
-    assert row2['Inflow'] == '2000,00' # Expect string format
-    assert row2['Memo'] == 'Income 1'
+    assert row2.date == '2024-01-16'
+    assert row2.outflow == ''
+    assert row2.inflow == '2000,00'
+    assert row2.memo == 'Income 1'
 
     # Check third row (expense)
     row3 = transformed_list[2]
-    assert row3['Date'] == '2024-01-17'
-    assert row3['Outflow'] == '50,25' # Expect string format
-    assert row3['Inflow'] == ''
-    assert row3['Memo'] == 'Expense 2'
+    assert row3.date == '2024-01-17'
+    assert row3.outflow == '50,25'
+    assert row3.inflow == ''
+    assert row3.memo == 'Expense 2'
 
     # Check fourth row (zero amount)
     row4 = transformed_list[3]
-    assert row4['Date'] == '2024-01-18'
-    assert row4['Outflow'] == ''
-    assert row4['Inflow'] == ''
-    assert row4['Memo'] == 'Zero Amount'
+    assert row4.date == '2024-01-18'
+    assert row4.outflow == ''
+    assert row4.inflow == ''
+    assert row4.memo == 'Zero Amount'
 
 def test_transform_transactions_empty_input():
     """Tests transformation with an empty DataFrame."""
@@ -106,14 +105,14 @@ def test_transform_transactions_handles_cleaned_nan_data(sample_parsed_data_with
 
     # Check remaining rows are transformed correctly
     row1 = transformed_list[0]
-    assert row1['Memo'] == 'Expense 1'
-    assert row1['Outflow'] == '100,50' # Expect string format
-    assert row1['Inflow'] == ''
+    assert row1.memo == 'Expense 1'
+    assert row1.outflow == '100,50'
+    assert row1.inflow == ''
 
     row2 = transformed_list[1]
-    assert row2['Memo'] == '' # Expect empty string for None/NaN description
-    assert row2['Outflow'] == ''
-    assert row2['Inflow'] == '2000,00' # Expect string format
+    assert row2.memo == ''
+    assert row2.outflow == ''
+    assert row2.inflow == '2000,00'
 
 # TODO: Add tests for transformation logic specific to other account types 
 # (e.g., First Card where positive amount = outflow) when implemented. 
