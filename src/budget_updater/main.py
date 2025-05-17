@@ -197,11 +197,11 @@ def main():
             # ---vvv--- ADD SORTING STEP ---vvv---
             logger.info(f"Sorting {len(transformed_data)} transactions by date...")
             try:
-                # Sort the list of dictionaries in place based on the 'Date' key
-                transformed_data.sort(key=lambda txn: txn['Date'])
+                # Sort the list of Transaction objects in place based on the date field
+                transformed_data.sort(key=lambda txn: txn.date)
                 logger.info("Transactions sorted chronologically.")
-            except KeyError:
-                logger.error("Transformation failed to produce 'Date' key correctly. Cannot sort.")
+            except AttributeError:
+                logger.error("Transformation failed to produce date attribute correctly. Cannot sort.")
                 sys.exit(1)
             except Exception as sort_err:
                  logger.error(f"Error during sorting: {sort_err}", exc_info=True)
@@ -212,8 +212,8 @@ def main():
         logger.info("Starting AI categorization...")
         final_transactions = []
         for txn in tqdm(transformed_data, desc="Categorizing Transactions", unit="txn"):
-            original_memo = txn.get('Memo') # Get original memo safely
-            date_str = txn.get('Date') # Expecting YYYY-MM-DD string from transform
+            original_memo = txn.memo
+            date_str = txn.date
             # Determine the amount string to send to the AI.  Transformation
             # stores ``Outflow`` and ``Inflow`` as formatted strings ("123,45")
             # with empty strings when the value is zero.  The previous logic
@@ -222,19 +222,22 @@ def main():
             # in ``amount_str`` sometimes being an empty string and the AI
             # receiving no amount.  Instead simply pick the non-empty value.
 
-            outflow_str = txn.get('Outflow') or ""
-            inflow_str = txn.get('Inflow') or ""
+            outflow_str = txn.outflow or ""
+            inflow_str = txn.inflow or ""
             amount_str = outflow_str if outflow_str else inflow_str
-            account_name = txn.get('Account') # Account name should be the validated one
+            account_name = txn.account  # Account name should be the validated one
 
             if not all([date_str, amount_str is not None, original_memo is not None, account_name]):
-                logger.warning(f"Transaction missing required fields for ADK categorization (Date, Amount, Memo, Account). Skipping AI. Data: {txn}")
-                txn['Category'] = "MANUAL REVIEW (Missing Data)"
-                txn['Memo'] = original_memo if original_memo is not None else ""
+                logger.warning(
+                    "Transaction missing required fields for ADK categorization (Date, Amount, Memo, Account). Skipping AI. Data: %s",
+                    txn,
+                )
+                txn.category = "MANUAL REVIEW (Missing Data)"
+                txn.memo = original_memo if original_memo is not None else ""
             elif adk_runner is None or adk_session_service is None: # Check both
                 logger.warning("ADK Runner or Session Service not initialized. Skipping AI categorization.")
-                txn['Category'] = "MANUAL REVIEW (ADK Not Initialized)"
-                txn['Memo'] = original_memo
+                txn.category = "MANUAL REVIEW (ADK Not Initialized)"
+                txn.memo = original_memo
             elif original_memo: # Only call AI if there's an original memo and other fields
                 logger.debug(f"Calling ADK for: Date='{date_str}', Amount='{amount_str}', Desc='{original_memo}', Acc='{account_name}'")
                 ai_result = adk_agent_service.categorize_transaction_with_adk(
@@ -245,18 +248,28 @@ def main():
                     raw_description=original_memo, # Pass original memo as raw_description to ADK
                     account_name=account_name
                 )
-                txn['Category'] = ai_result.get("category", "MANUAL REVIEW (ADK Fallback)")
-                txn['Memo'] = ai_result.get("summary", original_memo) # Use agent's 'summary' for sheet 'Memo'
+                txn.category = ai_result.get("category", "MANUAL REVIEW (ADK Fallback)")
+                txn.memo = ai_result.get("summary", original_memo)  # Use agent's 'summary' for sheet 'Memo'
                 
                 # Log the new detailed fields from the agent
                 agent_query = ai_result.get("query", "N/A")
                 agent_email_subject = ai_result.get("email_subject", "N/A")
-                logger.debug(f"ADK Result for '{original_memo}': Cat='{txn['Category']}', Summary (used as Memo)='{txn['Memo']}', GmailQuery='{agent_query}', EmailSubject='{agent_email_subject}'")
+                logger.debug(
+                    "ADK Result for '%s': Cat='%s', Summary (used as Memo)='%s', GmailQuery='%s', EmailSubject='%s'",
+                    original_memo,
+                    txn.category,
+                    txn.memo,
+                    agent_query,
+                    agent_email_subject,
+                )
             else:
                 # If original memo was missing/empty, set placeholder and keep empty memo
-                txn['Category'] = "UNCATEGORIZED (No Memo)"
-                txn['Memo'] = ""
-                logger.warning(f"Original memo missing/empty for ADK, setting category to UNCATEGORIZED. Data: {txn}")
+                txn.category = "UNCATEGORIZED (No Memo)"
+                txn.memo = ""
+                logger.warning(
+                    "Original memo missing/empty for ADK, setting category to UNCATEGORIZED. Data: %s",
+                    txn,
+                )
 
             final_transactions.append(txn)
 

@@ -6,7 +6,7 @@ import logging
 import os
 import pickle
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -16,6 +16,7 @@ from googleapiclient.errors import HttpError
 
 # Import constants from config
 from . import config
+from .models import Transaction
 
 logger = logging.getLogger(__name__)
 
@@ -169,14 +170,13 @@ class SheetAPI:
         """Returns the cached list of valid account names."""
         return self.accounts
         
-    def append_transactions(self, transactions: List[Dict[str, Any]]) -> bool:
+    def append_transactions(self, transactions: List[Transaction]) -> bool:
         """
         Appends a list of transactions to the 'New Transactions' sheet,
         preserving existing cell formatting and validation by inserting rows first.
 
         Args:
-            transactions: A list of dictionaries, where each key is a column header
-                          and the value is the cell content for that transaction.
+            transactions: A list of :class:`Transaction` instances to append.
 
         Returns:
             True if successful, False otherwise.
@@ -226,11 +226,11 @@ class SheetAPI:
 
             # --- 3. Prepare batch update requests --- \n            requests = []\n            \n            # 3a. Insert blank rows (NO inheritFromBefore)\n            insert_request = {\n                "insertDimension": {\n                    "range": {\n                        "sheetId": sheet_id,\n                        "dimension": "ROWS",\n                        "startIndex": insert_start_0_based_index, # Insert *after* this 0-based index\n                        "endIndex": insert_start_0_based_index + num_rows_to_add\n                    },\n                    # "inheritFromBefore": True # <-- REMOVED/Set to False implicitly\n                }\n            }\n            requests.append(insert_request)\n\n            # 3b. Copy Format/Validation from template row (e.g., row 2) to new rows\n            # Assuming header is row 1, template is row 2.\n            template_row_index = 1 # 0-based index for row 2\n            end_column_index = len(target_columns) # 0-based exclusive end index\n            \n            # Check if there's at least one row below the header to copy from\n            if last_row >= 1: # Ensure there's a header row or data to potentially copy from (adjust if header row can be empty) \n                source_range = {\n                    "sheetId": sheet_id,\n                    "startRowIndex": template_row_index, \n                    "endRowIndex": template_row_index + 1, \n                    "startColumnIndex": 0,\n                    "endColumnIndex": end_column_index \n                }\n                destination_range = {\n                    "sheetId": sheet_id,\n                    "startRowIndex": insert_start_0_based_index,\n                    "endRowIndex": insert_start_0_based_index + num_rows_to_add,\n                    "startColumnIndex": 0,\n                    "endColumnIndex": end_column_index \n                }\n                \n                copy_paste_request = {\n                    "copyPaste": {\n                        "source": source_range,\n                        "destination": destination_range,\n                        "pasteType": "PASTE_FORMAT", # Copies formatting rules and data validation\n                        "pasteOrientation": "NORMAL"\n                    }\n                }\n                requests.append(copy_paste_request)\n                logger.debug(f"Adding request to copy format from row {template_row_index + 1} to new rows.")\n            else:\n                logger.warning(f"Cannot copy format, sheet '{sheet_name}' has less than 2 rows. New rows might lack formatting/validation.")\n\n            # --- Execute Batch Update (Insert + Copy Format) ---\n            if requests:\n                batch_update_body = {'requests': requests}\n                logger.info(f"Executing batch update (insert rows, copy format) for '{sheet_name}'...")\n                self.service.spreadsheets().batchUpdate(\n                    spreadsheetId=spreadsheet_id,\n                    body=batch_update_body\n                ).execute()\n                logger.debug("Batch update request executed.")\n            else:\n                logger.error("No requests generated for batch update. This should not happen.")\n                return False\n\n            # --- 4. Prepare data for update --- \n
 
-            # --- 4. Prepare data for update --- 
-            # Convert list of dicts to list of lists in the correct column order
+            # --- 4. Prepare data for update ---
+            # Convert list of Transaction objects to list of lists in the correct column order
             update_values = []
             for txn in transactions:
-                row_values = [txn.get(col, "") for col in target_columns]
+                row_values = [getattr(txn, col.lower(), "") for col in target_columns]
                 update_values.append(row_values)
             
             if not update_values:
@@ -278,18 +278,16 @@ class SheetAPI:
 
     def append_dummy_transaction(self):
         """Appends a single dummy transaction for testing purposes."""
-        dummy_txn = {
-            'Date': '2024-01-01',
-            'Outflow': '12,34',
-            'Inflow': '',
-            'Category': 'Test Category',
-            'Account': 'Test Account',
-            'Memo': 'Dummy transaction for testing SheetAPI connection',
-            'Status': '✅'
-        }
-        # Ensure the dummy transaction dict has all keys defined in TARGET_COLUMNS
-        full_dummy_txn = {col: dummy_txn.get(col, '') for col in config.TARGET_COLUMNS}
-        success = self.append_transactions([full_dummy_txn])
+        dummy_txn = Transaction(
+            date="2024-01-01",
+            outflow="12,34",
+            inflow="",
+            category="Test Category",
+            account="Test Account",
+            memo="Dummy transaction for testing SheetAPI connection",
+            status="✅"
+        )
+        success = self.append_transactions([dummy_txn])
         if success:
             logger.info("Dummy transaction appended successfully.")
         else:
