@@ -7,7 +7,7 @@ name = "budget_updater"
 version = "0.1.0"
 description = "Bank Transaction Processor for Aspire Budget Sheet"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 authors = [
     {name = "Mat Soldin"}
 ]
@@ -20,7 +20,12 @@ dependencies = [
     "tqdm>=4.60.0",
     "openpyxl>=3.0.0",
     "xlrd",
-    "python-dotenv>=0.20.0"
+    "python-dotenv>=0.20.0",
+    "google-adk>=0.5.0",
+    "google-cloud-aiplatform[adk,agent_engines]>=1.91.0",
+    "absl-py>=1.0.0",
+    "beautifulsoup4>=4.12.0",
+    "pydantic>=2.0.0"
 ]
 
 [project.optional-dependencies]

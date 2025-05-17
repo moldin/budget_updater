@@ -53,21 +53,23 @@ class SheetAPI:
             logger.info(f"Loaded {len(self.accounts)} accounts from {config.BACKEND_DATA_SHEET_NAME}.")
             # logger.info(f"Loaded {len(self.categories)} categories from {config.BACKEND_DATA_SHEET_NAME}.")
 
-    def _get_client_secret_path(self) -> Path | None:
-        """Finds the client secret JSON file in the credentials directory."""
-        if not config.CREDENTIALS_DIR.is_dir():
-            logger.error(f"Credentials directory not found: {config.CREDENTIALS_DIR}")
-            return None
-
-        found_files = list(config.CREDENTIALS_DIR.glob(config.DEFAULT_CLIENT_SECRET_PATTERN))
-
-        if not found_files:
-            logger.error(f"No client secret file matching '{config.DEFAULT_CLIENT_SECRET_PATTERN}' found in {config.CREDENTIALS_DIR}")
-            return None
-        elif len(found_files) > 1:
-            logger.warning(f"Multiple client secret files found: {found_files}. Using the first one: {found_files[0]}")
-
-        return found_files[0]
+    def _get_client_secret_path(self) -> Path:
+        """Finds the client secret JSON file in the credentials directory.
+        Prioritizes the path defined in config.CLIENT_SECRET_FILE_PATH.
+        Raises FileNotFoundError if it cannot be found.
+        """
+        if config.CLIENT_SECRET_FILE_PATH.exists():
+            logger.debug(f"Using client secret file: {config.CLIENT_SECRET_FILE_PATH}")
+            return config.CLIENT_SECRET_FILE_PATH
+        else:
+            logger.error(
+                f"Client secret file not found at the expected path: {config.CLIENT_SECRET_FILE_PATH}. "
+                f"Please ensure '{config.CLIENT_SECRET_FILENAME}' is in the '{config.CREDENTIALS_DIR}' directory."
+            )
+            raise FileNotFoundError(
+                f"Client secret file not found at {config.CLIENT_SECRET_FILE_PATH}. "
+                f"Ensure '{config.CLIENT_SECRET_FILENAME}' is in '{config.CREDENTIALS_DIR}'."
+            )
 
     def _authenticate(self) -> Credentials | None:
         """Handles OAuth 2.0 authentication flow."""
@@ -75,16 +77,16 @@ class SheetAPI:
         # The file token.pickle stores the user's access and refresh tokens, and is
         # created automatically when the authorization flow completes for the first
         # time.
-        if config.TOKEN_PICKLE_PATH.exists():
-            logger.debug(f"Loading credentials from token file: {config.TOKEN_PICKLE_PATH}")
+        if config.TOKEN_PICKLE_FILE_PATH.exists():
+            logger.debug(f"Loading credentials from token file: {config.TOKEN_PICKLE_FILE_PATH}")
             try:
-                with open(config.TOKEN_PICKLE_PATH, 'rb') as token:
+                with open(config.TOKEN_PICKLE_FILE_PATH, 'rb') as token:
                     creds = pickle.load(token)
             except (EOFError, pickle.UnpicklingError, FileNotFoundError) as e:
-                 logger.error(f"Error loading token file ({config.TOKEN_PICKLE_PATH}), will re-authenticate: {e}")
+                 logger.error(f"Error loading token file ({config.TOKEN_PICKLE_FILE_PATH}), will re-authenticate: {e}")
                  creds = None # Ensure creds is None if loading fails
             except Exception as e:
-                 logger.exception(f"Unexpected error loading token file ({config.TOKEN_PICKLE_PATH}): {e}")
+                 logger.exception(f"Unexpected error loading token file ({config.TOKEN_PICKLE_FILE_PATH}): {e}")
                  creds = None
 
         # If there are no (valid) credentials available, let the user log in.
@@ -122,11 +124,11 @@ class SheetAPI:
                  try:
                      # Ensure credentials directory exists
                      config.CREDENTIALS_DIR.mkdir(parents=True, exist_ok=True)
-                     with open(config.TOKEN_PICKLE_PATH, 'wb') as token:
+                     with open(config.TOKEN_PICKLE_FILE_PATH, 'wb') as token:
                          pickle.dump(creds, token)
-                     logger.debug(f"Credentials saved to {config.TOKEN_PICKLE_PATH}")
+                     logger.debug(f"Credentials saved to {config.TOKEN_PICKLE_FILE_PATH}")
                  except Exception as e:
-                     logger.exception(f"Error saving token file to {config.TOKEN_PICKLE_PATH}: {e}")
+                     logger.exception(f"Error saving token file to {config.TOKEN_PICKLE_FILE_PATH}: {e}")
                      # Continue even if saving fails, but log the error
 
         return creds

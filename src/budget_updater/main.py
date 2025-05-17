@@ -11,7 +11,8 @@ from dotenv import load_dotenv # Import dotenv
 # Use relative imports within the package
 from .parsers import parse_seb # Import the SEB parser
 from .transformation import transform_transactions # Import the transformation function
-from .categorizer import categorize_transaction # Import the new function
+# from .categorizer import categorize_transaction # OLD categorizer - REMOVED
+from . import adk_agent_service # NEW ADK Service
 from tqdm import tqdm # Import tqdm
 from . import config # Import config module itself
 from .sheets_api import SheetAPI # Import the class
@@ -70,6 +71,17 @@ def main():
     """Execute the main application logic."""
     load_dotenv() 
     logger.info("Loaded environment variables from .env file (if present).")
+
+    # Initialize ADK Runner and Session Service
+    adk_runner = None
+    adk_session_service = None
+    try:
+        adk_runner, adk_session_service = adk_agent_service.create_adk_runner_and_service()
+        logger.info("ADK Runner and Session Service initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize ADK Runner and Session Service: {e}", exc_info=True)
+        logger.error("Categorization via AI will not be possible. Please check GCP/ADK setup and .env variables.")
+        # adk_runner and adk_session_service will remain None
 
     # Initialize SheetAPI *after* parsing basic args, before validation
     args = parse_args()
@@ -201,17 +213,41 @@ def main():
         final_transactions = []
         for txn in tqdm(transformed_data, desc="Categorizing Transactions", unit="txn"):
             original_memo = txn.get('Memo') # Get original memo safely
+            date_str = txn.get('Date') # Expecting YYYY-MM-DD string from transform
+            amount_val = txn.get('Outflow') if txn.get('Outflow') != 0 else txn.get('Inflow', 0)
+            amount_str = str(amount_val) # Convert amount to string for ADK
+            account_name = txn.get('Account') # Account name should be the validated one
 
-            if original_memo: # Only call AI if there's an original memo
-                ai_category, ai_memo = categorize_transaction(original_memo)
-                txn['Category'] = ai_category
-                txn['Memo'] = ai_memo # Overwrite memo with AI version
-                logger.debug(f"AI Result for '{original_memo}': Cat='{ai_category}', Memo='{ai_memo}'")
+            if not all([date_str, amount_str is not None, original_memo is not None, account_name]):
+                logger.warning(f"Transaction missing required fields for ADK categorization (Date, Amount, Memo, Account). Skipping AI. Data: {txn}")
+                txn['Category'] = "MANUAL REVIEW (Missing Data)"
+                txn['Memo'] = original_memo if original_memo is not None else ""
+            elif adk_runner is None or adk_session_service is None: # Check both
+                logger.warning("ADK Runner or Session Service not initialized. Skipping AI categorization.")
+                txn['Category'] = "MANUAL REVIEW (ADK Not Initialized)"
+                txn['Memo'] = original_memo
+            elif original_memo: # Only call AI if there's an original memo and other fields
+                logger.debug(f"Calling ADK for: Date='{date_str}', Amount='{amount_str}', Desc='{original_memo}', Acc='{account_name}'")
+                ai_result = adk_agent_service.categorize_transaction_with_adk(
+                    runner=adk_runner, # Pass runner
+                    session_service=adk_session_service, # Pass session_service
+                    date_str=date_str,
+                    amount_str=amount_str,
+                    raw_description=original_memo, # Pass original memo as raw_description to ADK
+                    account_name=account_name
+                )
+                txn['Category'] = ai_result.get("category", "MANUAL REVIEW (ADK Fallback)")
+                txn['Memo'] = ai_result.get("summary", original_memo) # Use agent's 'summary' for sheet 'Memo'
+                
+                # Log the new detailed fields from the agent
+                agent_query = ai_result.get("query", "N/A")
+                agent_email_subject = ai_result.get("email_subject", "N/A")
+                logger.debug(f"ADK Result for '{original_memo}': Cat='{txn['Category']}', Summary (used as Memo)='{txn['Memo']}', GmailQuery='{agent_query}', EmailSubject='{agent_email_subject}'")
             else:
-                # If original memo was missing/empty, set UNCATEGORIZED and keep empty memo
-                txn['Category'] = "UNCATEGORIZED"
-                txn['Memo'] = "" # Ensure memo is empty string
-                logger.warning(f"Original memo missing/empty, setting category to UNCATEGORIZED. Data: {txn}")
+                # If original memo was missing/empty, set placeholder and keep empty memo
+                txn['Category'] = "UNCATEGORIZED (No Memo)"
+                txn['Memo'] = ""
+                logger.warning(f"Original memo missing/empty for ADK, setting category to UNCATEGORIZED. Data: {txn}")
 
             final_transactions.append(txn)
 

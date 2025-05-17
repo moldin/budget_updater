@@ -2,13 +2,21 @@ import os
 from pathlib import Path
 from typing import Dict
 
-# --- Google API Configuration ---
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
+# --- AI Model Configuration ---
+# Ensure GEMINI_MODEL_ID is defined, preferably from env var with a default
+DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash-preview-04-17" # Changed to a more general version
+#DEFAULT_GEMINI_MODEL_ID = "gemini-2.0-flash" # Changed to a more general version
+GEMINI_MODEL_ID = os.environ.get("GEMINI_MODEL_ID", DEFAULT_GEMINI_MODEL_ID)
 
-# Credentials paths (relative to project root assumed)
+# --- Google API Configuration ---
+SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/gmail.readonly"] # Added gmail scope
+
+# Credentials paths
 CREDENTIALS_DIR = Path("credentials")
-TOKEN_PICKLE_PATH = CREDENTIALS_DIR / "token.pickle"
-DEFAULT_CLIENT_SECRET_PATTERN = "client_secret_*.json" # Pattern to find client secret
+CLIENT_SECRET_FILENAME = "client_secret.json" # Standardized name
+TOKEN_PICKLE_FILENAME = "token.pickle"
+CLIENT_SECRET_FILE_PATH = CREDENTIALS_DIR / CLIENT_SECRET_FILENAME
+TOKEN_PICKLE_FILE_PATH = CREDENTIALS_DIR / TOKEN_PICKLE_FILENAME
 
 # --- Google Sheet Configuration ---
 # Allow overriding via environment variable, but use PRD default
@@ -40,22 +48,20 @@ ACCOUNT_NAME_MAP: Dict[str, str] = {
     # Add other aliases as needed
 }
 
-# --- Vertex AI Configuration ---
+# --- GCP Configuration (General for ADK/Vertex) ---
 # Use PRD values as defaults, allow overrides via environment variables
-DEFAULT_GOOGLE_CLOUD_PROJECT = "aspiro-budget-analysis"
-DEFAULT_GOOGLE_CLOUD_LOCATION = "europe-west1"
-DEFAULT_GEMINI_MODEL_ID = "gemini-2.0-flash-001" # Updated default based on PRD correction
+DEFAULT_GOOGLE_CLOUD_PROJECT = "aspiro-budget-analysis" # Keep if still relevant
+DEFAULT_GOOGLE_CLOUD_LOCATION = "us-central1" # Keep if still relevant
 
 GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", DEFAULT_GOOGLE_CLOUD_PROJECT)
 GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", DEFAULT_GOOGLE_CLOUD_LOCATION)
-GEMINI_MODEL_ID = os.environ.get("GEMINI_MODEL_ID", DEFAULT_GEMINI_MODEL_ID)
+# GOOGLE_CLOUD_STAGING_BUCKET is expected to be set in .env as per MERGE_PLAN
 
 # GOOGLE_APPLICATION_CREDENTIALS *must* be set as an env var pointing to the key file
-# We will check for its presence directly in the relevant modules (categorizer.py)
+# for many Google Cloud services, including Vertex AI used by ADK.
 
 # Check if the essential GOOGLE_CLOUD_PROJECT is available
 if not GOOGLE_CLOUD_PROJECT:
-     # This should only happen if the default is removed and the env var is empty/not set
      raise ValueError("GOOGLE_CLOUD_PROJECT is not defined in config defaults or environment variables.")
 
 # --- Transformation Configuration ---
