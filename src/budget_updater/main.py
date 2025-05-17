@@ -214,8 +214,17 @@ def main():
         for txn in tqdm(transformed_data, desc="Categorizing Transactions", unit="txn"):
             original_memo = txn.get('Memo') # Get original memo safely
             date_str = txn.get('Date') # Expecting YYYY-MM-DD string from transform
-            amount_val = txn.get('Outflow') if txn.get('Outflow') != 0 else txn.get('Inflow', 0)
-            amount_str = str(amount_val) # Convert amount to string for ADK
+            # Determine the amount string to send to the AI.  Transformation
+            # stores ``Outflow`` and ``Inflow`` as formatted strings ("123,45")
+            # with empty strings when the value is zero.  The previous logic
+            # compared the ``Outflow`` string with the integer ``0`` which
+            # always evaluated to ``True`` for non-empty strings.  This resulted
+            # in ``amount_str`` sometimes being an empty string and the AI
+            # receiving no amount.  Instead simply pick the non-empty value.
+
+            outflow_str = txn.get('Outflow') or ""
+            inflow_str = txn.get('Inflow') or ""
+            amount_str = outflow_str if outflow_str else inflow_str
             account_name = txn.get('Account') # Account name should be the validated one
 
             if not all([date_str, amount_str is not None, original_memo is not None, account_name]):
