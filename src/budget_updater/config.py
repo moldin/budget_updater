@@ -4,15 +4,21 @@ from typing import Dict
 
 # --- AI Model Configuration ---
 # Ensure GEMINI_MODEL_ID is defined, preferably from env var with a default
-#DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash-preview-04-17" # Changed to a more general version
-DEFAULT_GEMINI_MODEL_ID = "gemini-2.0-flash" # Changed to a more general version
+DEFAULT_GEMINI_MODEL_ID = "gemini-2.5-flash-preview-04-17" # Changed to a more general version
+#DEFAULT_GEMINI_MODEL_ID = "gemini-2.0-flash" # Changed to a more general version
 GEMINI_MODEL_ID = os.environ.get("GEMINI_MODEL_ID", DEFAULT_GEMINI_MODEL_ID)
 
 # --- Google API Configuration ---
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/gmail.readonly"] # Added gmail scope
 
 # Credentials paths
-CREDENTIALS_DIR = Path("credentials")
+# Resolve CREDENTIALS_DIR to be absolute from the project root
+# config.py is in src/budget_updater/config.py
+# .parent is src/budget_updater/
+# .parent.parent is src/
+# .parent.parent.parent is the project root.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+CREDENTIALS_DIR = PROJECT_ROOT / "credentials"
 CLIENT_SECRET_FILENAME = "client_secret.json" # Standardized name
 TOKEN_PICKLE_FILENAME = "token.pickle"
 CLIENT_SECRET_FILE_PATH = CREDENTIALS_DIR / CLIENT_SECRET_FILENAME
@@ -64,6 +70,15 @@ GOOGLE_CLOUD_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", DEFAULT_GOOGLE_C
 if not GOOGLE_CLOUD_PROJECT:
      raise ValueError("GOOGLE_CLOUD_PROJECT is not defined in config defaults or environment variables.")
 
+# --- BigQuery Configuration ---
+# BigQuery dataset for budget data warehouse
+DEFAULT_BIGQUERY_DATASET_ID = "budget_data_warehouse"
+BIGQUERY_DATASET_ID = os.environ.get("BIGQUERY_DATASET_ID", DEFAULT_BIGQUERY_DATASET_ID)
+
+# BigQuery location (should match your project's default region)
+DEFAULT_BIGQUERY_LOCATION = "EU"  # Change to "US" if your GCP project is US-based
+BIGQUERY_LOCATION = os.environ.get("BIGQUERY_LOCATION", DEFAULT_BIGQUERY_LOCATION)
+
 # --- Transformation Configuration ---
 PLACEHOLDER_CATEGORY = "PENDING_AI"
 DEFAULT_STATUS = "✅"
@@ -89,8 +104,8 @@ CATEGORIES_WITH_DESCRIPTIONS = """
 - **Utbildning:** Everything related to learning (Udemy, Pluralsight, Coursera, conferences, workshops).
 - **Utlägg arbete:** When I have paid for something related to work that will be expensed later (company reimburses me).
 - **Utlägg andra:** When I have paid for someone else who now owes me (e.g., paying for a group dinner and getting Swished back).
-- **Appar/Mjukvara:** Most often through Apple AppStore/Google Play, but could also be software subscriptions (excluding those listed separately like Adobe, Microsoft 365 etc).
-- **Musik:** When I purchase songs (iTunes), music streaming services (excluding Spotify), or gear for my music hobby (instruments, accessories).
+- **Appar/Mjukvara:** Most often through Apple AppStore/Google Play, but could also be software subscriptions (excluding those listed separately like Adobe, Microsoft 365 etc). These are often specified in emails so search for them there.
+- **Musik:** When I purchase songs (iTunes/Apple), music streaming services (excluding Spotify), or gear for my music hobby (instruments, accessories).
 - **Böcker:** Books (physical, Kindle), newspaper/magazine subscriptions (digital or print).
 - **Teknik:** Electronic gear, computer stuff, gadgets, accessories, components.
 - **Kläder:** Clothing, shoes, accessories.
@@ -138,6 +153,55 @@ CATEGORIES_WITH_DESCRIPTIONS = """
 - **Semester äta ute:** Restaurant bills during vacation.
 - **Semester nöjen:** Entertainment expenses during vacation.
 - **Semester övrigt:** Misc expenses during vacation that don't fit other semester categories.
-- **AI - tjänster:** Subscriptions or payments for AI services (Notion AI, ChatGPT Plus, Cursor, Github Copilot, Google Cloud AI, Midjourney, etc.).
+- **AI - tjänster:** Subscriptions or payments for AI services (Notion AI, ChatGPT Plus, Cursor, Lovable, Windsurf, Github Copilot, Google Cloud AI, Midjourney, etc.).
 """
 # ---^^^--- END ADD CATEGORIES LIST ---^^^--- 
+
+# --- Config Class ---
+class Config:
+    """Configuration class for Budget Updater with BigQuery support."""
+    
+    def __init__(self):
+        self.gcp_project_id = GOOGLE_CLOUD_PROJECT
+        self.gcp_location = GOOGLE_CLOUD_LOCATION
+        self.bigquery_dataset_id = BIGQUERY_DATASET_ID
+        self.bigquery_location = BIGQUERY_LOCATION
+        
+        # Google Sheets config
+        self.spreadsheet_id = SPREADSHEET_ID
+        self.new_transactions_sheet = NEW_TRANSACTIONS_SHEET_NAME
+        self.backend_data_sheet = BACKEND_DATA_SHEET_NAME
+        self.transactions_sheet = TRANSACTIONS_SHEET_NAME
+        
+        # Account mapping
+        self.account_name_map = ACCOUNT_NAME_MAP
+        
+        # Categories
+        self.categories_with_descriptions = CATEGORIES_WITH_DESCRIPTIONS
+        self.placeholder_category = PLACEHOLDER_CATEGORY
+        self.default_status = DEFAULT_STATUS
+        self.target_columns = TARGET_COLUMNS
+        
+        # Validate BigQuery configuration
+        self._validate_bigquery_config()
+    
+    def _validate_bigquery_config(self):
+        """Validate that required BigQuery configuration is present."""
+        if not self.gcp_project_id:
+            raise ValueError("GCP project ID is required for BigQuery operations")
+        
+        if not self.bigquery_dataset_id:
+            raise ValueError("BigQuery dataset ID is required")
+        
+        # Check if authentication is available (either service account or user credentials)
+        # GOOGLE_APPLICATION_CREDENTIALS is only required for service account auth
+        # User auth via `gcloud auth application-default login` works without it
+        google_creds_env = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+        if google_creds_env:
+            # Service account auth - validate the file exists
+            if not os.path.exists(google_creds_env):
+                raise ValueError(
+                    f"GOOGLE_APPLICATION_CREDENTIALS points to non-existent file: {google_creds_env}"
+                )
+        # If no service account, assume user auth via gcloud auth application-default login
+        # BigQuery client will automatically use Application Default Credentials 
