@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import pandas as pd
-from typing import Optional, Dict, Callable, Any
+from typing import Optional, Dict, Callable, Any, List
 
 # ---vvv--- REMOVE PARSER REGISTRY FROM HERE ---vvv---
 # from .parsers import parse_seb # Ensure parse_seb is available for the registry
@@ -20,152 +20,230 @@ from typing import Optional, Dict, Callable, Any
 
 logger = logging.getLogger(__name__)
 
-def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
+def parse_excel_generic(
+    file_path: str | Path,
+    *,
+    engine: str = None,
+    sheet_name: str = None,
+    column_map: Dict[str, List[str]],
+    date_type: str = 'string',  # 'string' or 'excel_serial'
+    date_origin: str = '1899-12-30',
+    required_columns: List[str] = None,
+) -> pd.DataFrame | None:
     """
-    Parses an SEB export file (xslx assumed).
-
+    Generic Excel parser for bank/card exports.
     Args:
-        file_path: Path to the SEB export file.
-
+        file_path: Path to the Excel file.
+        engine: pandas read_excel engine (optional)
+        sheet_name: Sheet name (optional)
+        column_map: Dict mapping logical names ('date', 'desc', 'amount') to possible Excel column names
+        date_type: 'string' for normal date parsing, 'excel_serial' for Excel serial dates
+        date_origin: Origin for Excel serial dates
+        required_columns: List of logical names that must be present (default: ['date', 'desc', 'amount'])
     Returns:
-        A pandas DataFrame containing the relevant columns ('Date', 'Description', 'Amount') 
-        or None if parsing fails.
+        DataFrame with columns: ParsedDate, ParsedDescription, ParsedAmount, or None on error.
     """
     try:
-        file_path = Path(file_path) # Ensure it's a Path object
-        logger.info(f"Attempting to parse SEB Excel file: {file_path}")
-        
-        # Use pandas read_excel for .xlsx files
-        # Specify the sheet name as per PRD ('Sheet1')
-        # Use openpyxl engine explicitly
-        df = pd.read_excel(file_path, sheet_name='Sheet1', engine='openpyxl')
-        
-        logger.debug(f"Loaded dataframe from Sheet1 with columns: {df.columns.tolist()}")
-        
-        # --- Column Name Identification ---
-        # SEB columns according to PRD: 'Bokföringsdatum', 'Text', 'Belopp'
-        # We need to be robust against slight variations or encoding issues in headers
-        
-        date_col = None
-        desc_col = None
-        amount_col = None
-        
-        # Attempt to find columns, being flexible with potential BOM or extra spaces
-        for col in df.columns:
-            normalized_col = str(col).strip().replace('\ufeff', '') # Ensure col is string before stripping
-            if normalized_col == 'Bokföringsdatum':
-                date_col = col
-            elif normalized_col == 'Text':
-                desc_col = col
-            elif normalized_col == 'Belopp':
-                amount_col = col
-
-        if not all([date_col, desc_col, amount_col]):
-            missing = []
-            if not date_col: missing.append('Bokföringsdatum')
-            if not desc_col: missing.append('Text')
-            if not amount_col: missing.append('Belopp')
-            logger.error(f"Could not find required columns in {file_path}, Sheet1. Missing: {missing}. Found columns: {df.columns.tolist()}")
-            return None
-            
-        logger.info(f"Found required columns: Date='{date_col}', Description='{desc_col}', Amount='{amount_col}'")
-
-        # --- Data Extraction and Basic Cleaning ---
-        # Select and rename columns for consistency
-        parsed_df = df[[date_col, desc_col, amount_col]].copy()
-        parsed_df.rename(columns={
-            date_col: 'ParsedDate',
-            desc_col: 'ParsedDescription',
-            amount_col: 'ParsedAmount'
-        }, inplace=True)
-
-
-        # --- Type Conversion and Validation ---
-        # Convert Date column to datetime objects (YYYY-MM-DD format assumed)
+        file_path = Path(file_path)
+        logger.info(f"Parsing Excel file: {file_path}")
+        read_excel_kwargs = {}
+        if engine:
+            read_excel_kwargs['engine'] = engine
+        if sheet_name:
+            read_excel_kwargs['sheet_name'] = sheet_name
         try:
-            parsed_df['ParsedDate'] = pd.to_datetime(parsed_df['ParsedDate'], errors='coerce')
-            if parsed_df['ParsedDate'].isnull().any():
-                null_dates_count = parsed_df['ParsedDate'].isnull().sum()
-                logger.warning(f"{null_dates_count} date(s) could not be parsed in {file_path}. Review file format. These rows will be dropped.")
+            df = pd.read_excel(file_path, **read_excel_kwargs)
         except Exception as e:
-            logger.error(f"Error converting Date column to datetime in {file_path}: {e}")
+            logger.error(f"read_excel failed for {file_path} with args {read_excel_kwargs}: {e}")
             return None
-
-        # Convert Amount column to numeric, handling potential thousand separators (like spaces) and decimal commas
+        logger.debug(f"Loaded dataframe with columns: {df.columns.tolist()}")
+        # Find columns
+        found_cols = {}
+        for logical, possible_names in column_map.items():
+            for col in df.columns:
+                normalized_col = str(col).strip().replace('\ufeff', '').lower()
+                for name in possible_names:
+                    if normalized_col == name.lower():
+                        found_cols[logical] = col
+                        break
+                if logical in found_cols:
+                    break
+        # Fallback for description: substring match if not found
+        if 'desc' in column_map and 'desc' not in found_cols:
+            for col in df.columns:
+                normalized_col = str(col).strip().lower()
+                if any(part in normalized_col for part in ['desc', 'spec', 'text', 'reseinformation', 'inköpsplats']):
+                    found_cols['desc'] = col
+                    logger.info(f"Found description column '{col}' using substring match.")
+                    break
+        # Check required columns
+        req = required_columns or ['date', 'desc', 'amount']
+        missing = [logical for logical in req if logical not in found_cols]
+        if missing:
+            logger.error(f"Could not find required columns in {file_path}. Missing: {missing}. Found: {found_cols}")
+            return None
+        # Select and rename
+        parsed_df = df[[found_cols['date'], found_cols['desc'], found_cols['amount']]].copy()
+        parsed_df.rename(columns={
+            found_cols['date']: 'ParsedDate',
+            found_cols['desc']: 'ParsedDescription',
+            found_cols['amount']: 'ParsedAmount',
+        }, inplace=True)
+        # Date conversion
+        try:
+            if date_type == 'excel_serial':
+                parsed_df['ParsedDate'] = pd.to_datetime(parsed_df['ParsedDate'], unit='D', origin=date_origin, errors='coerce')
+            else:
+                parsed_df['ParsedDate'] = pd.to_datetime(parsed_df['ParsedDate'], errors='coerce')
+            if parsed_df['ParsedDate'].isnull().any():
+                logger.warning(f"{parsed_df['ParsedDate'].isnull().sum()} date(s) could not be parsed in {file_path}.")
+        except Exception as e:
+            logger.error(f"Error converting Date column in {file_path}: {e}")
+            return None
+        # Amount conversion
         try:
             parsed_df['ParsedAmount'] = parsed_df['ParsedAmount'].astype(str).str.replace(r'[\s\xa0]+', '', regex=True).str.replace(',', '.', regex=False)
-
             parsed_df['ParsedAmount'] = pd.to_numeric(parsed_df['ParsedAmount'], errors='coerce')
-
             if parsed_df['ParsedAmount'].isnull().any():
-                null_amounts_count = parsed_df['ParsedAmount'].isnull().sum()
-                logger.warning(f"{null_amounts_count} amount(s) could not be parsed to numeric in {file_path}. Review file format. These rows will be dropped.")
+                logger.warning(f"{parsed_df['ParsedAmount'].isnull().sum()} amount(s) could not be parsed to numeric in {file_path}.")
         except Exception as e:
             logger.error(f"Error converting Amount column to numeric in {file_path}: {e}")
             return None
-            
-        # Ensure Description is string and handle potential NaN values if any rows had only NaN description
         parsed_df['ParsedDescription'] = parsed_df['ParsedDescription'].fillna('').astype(str)
-
-        # Drop rows where essential data might be missing after conversion (Date or Amount)
+        # Drop rows with missing essentials
         original_count = len(parsed_df)
         parsed_df.dropna(subset=['ParsedDate', 'ParsedAmount'], inplace=True)
         dropped_count = original_count - len(parsed_df)
         if dropped_count > 0:
-             logger.info(f"Dropped {dropped_count} rows due to parsing errors (Date or Amount).")
-
+            logger.info(f"Dropped {dropped_count} rows due to parsing errors (Date or Amount).")
         logger.info(f"Successfully parsed {len(parsed_df)} transactions from {file_path}")
         return parsed_df
-
     except FileNotFoundError:
-        logger.error(f"SEB Parser: File not found at {file_path}")
+        logger.error(f"File not found at {file_path}")
         return None
-    # Catch specific error if sheet name is wrong
-    except ValueError as e:
-        if "Worksheet named 'Sheet1' not found" in str(e):
-            logger.error(f"SEB Parser: Worksheet named 'Sheet1' not found in {file_path}. Please ensure the sheet name is correct.")
-        else:
-             logger.exception(f"SEB Parser: An unexpected ValueError occurred while parsing {file_path}: {e}")
-        return None
-    # Catch potential openpyxl/excel format errors
     except Exception as e:
-        # Check for common excel-related errors if possible (e.g. BadZipFile)
-        if "zip file" in str(e).lower(): # Example check
-             logger.error(f"SEB Parser: File {file_path} might be corrupted or not a valid Excel file. Error: {e}")
+        logger.exception(f"Unexpected error while parsing {file_path}: {e}")
+        return None
+
+def parse_seb(file_path: str | Path) -> pd.DataFrame | None:
+    return parse_excel_generic(
+        file_path,
+        engine='openpyxl',
+        sheet_name='Sheet1',
+        column_map={
+            'date': ['Bokföringsdatum'],
+            'desc': ['Text'],
+            'amount': ['Belopp'],
+        },
+        date_type='string',
+    )
+
+def parse_strawberry(file_path: str | Path) -> pd.DataFrame | None:
+    return parse_excel_generic(
+        file_path,
+        engine=None,  # Let pandas/xlrd decide
+        column_map={
+            'date': ['Bokfört'],
+            'desc': ['Specifikation'],
+            'amount': ['Belopp'],
+        },
+        date_type='excel_serial',
+        date_origin='1899-12-30',
+    )
+
+def parse_firstcard(file_path: str | Path) -> pd.DataFrame | None:
+    return parse_excel_generic(
+        file_path,
+        engine=None,  # Let pandas decide
+        column_map={
+            'date': ['Datum'],
+            'desc': ['Reseinformation / Inköpsplats', 'Reseinformation/Inköpsplats'],
+            'amount': ['Belopp'],
+        },
+        date_type='string',
+    )
+
+def parse_revolut(file_path: str | Path) -> pd.DataFrame | None:
+    """
+    Parses a Revolut export file (.xlsx assumed).
+    Expected columns: 'Completed Date', 'Description', 'Amount', 'Fee'.
+    Date format: YYYY-MM-DD HH:MM:SS (extract date part).
+    Fee should be added to OUTFLOW if present and non-zero.
+    """
+    try:
+        # First, get the basic parsed data using the generic parser
+        parsed_df = parse_excel_generic(
+            file_path,
+            engine='openpyxl',
+            column_map={
+                'date': ['Completed Date'],
+                'desc': ['Description'],
+                'amount': ['Amount'],
+            },
+            date_type='string',
+            required_columns=['date', 'desc', 'amount']
+        )
+        
+        if parsed_df is None:
+            return None
+            
+        # Now we need to handle the Fee column separately since it's not in the basic mapping
+        file_path = Path(file_path)
+        logger.info(f"Processing Revolut-specific Fee column for {file_path}")
+        
+        # Re-read the file to get the Fee column
+        df = pd.read_excel(file_path, engine='openpyxl')
+        
+        # Find the Fee column
+        fee_col = None
+        for col in df.columns:
+            normalized_col = str(col).strip().replace('\ufeff', '').lower()
+            if normalized_col == 'fee':
+                fee_col = col
+                break
+                
+        if fee_col is not None:
+            # Add fee to the parsed dataframe
+            parsed_df['Fee'] = df[fee_col].fillna(0)
+            
+            # Convert Fee to numeric
+            try:
+                parsed_df['Fee'] = pd.to_numeric(parsed_df['Fee'], errors='coerce').fillna(0)
+            except Exception as e:
+                logger.warning(f"Could not convert Fee column to numeric in {file_path}: {e}. Setting fees to 0.")
+                parsed_df['Fee'] = 0
+                
+            # Add fee to amount for outflows (fees are always additional costs)
+            # Fees should be subtracted from the amount (made more negative for outflows)
+            fee_adjustment = parsed_df['Fee']
+            parsed_df['ParsedAmount'] = parsed_df['ParsedAmount'] - fee_adjustment
+            
+            # Log fee processing
+            total_fees = parsed_df['Fee'].sum()
+            if total_fees > 0:
+                logger.info(f"Applied {total_fees} total fees to transactions in {file_path}")
+                
         else:
-             logger.exception(f"SEB Parser: An unexpected error occurred while parsing {file_path}: {e}")
+            logger.warning(f"Fee column not found in {file_path}")
+            
+        # Drop the temporary Fee column as we've incorporated it into ParsedAmount
+        if 'Fee' in parsed_df.columns:
+            parsed_df.drop('Fee', axis=1, inplace=True)
+            
+        return parsed_df
+        
+    except Exception as e:
+        logger.exception(f"Revolut Parser: An unexpected error occurred while parsing {file_path}: {e}")
         return None
 
 # ---vvv--- ADD PARSER REGISTRY HERE (AT THE END) ---vvv---
 # Type hint for parser functions
-ParserFunction = Callable[[Path], Optional[pd.DataFrame]]
+ParserFunction = Callable[[Path | str], Optional[pd.DataFrame]]
 
 PARSER_REGISTRY: Dict[str, ParserFunction] = {
     'seb': parse_seb,
-    # Add other parsers here as they are defined, e.g.:
-    # 'revolut': parse_revolut,
-    # 'firstcard': parse_firstcard,
-    # 'strawberry': parse_strawberry,
+    'strawberry': parse_strawberry,
+    'revolut': parse_revolut,
+    'firstcard': parse_firstcard,
 }
 # ---^^^--- END ADD PARSER REGISTRY HERE ---^^^---
-
-# Example usage (for testing purposes):
-# if __name__ == '__main__':
-#     logging.basicConfig(level=logging.INFO)
-#     # Create a dummy SEB CSV file for testing
-#     dummy_data = {
-#         'Bokföringsdatum': ['2023-01-15', '2023-01-16', 'Invalid Date', '2023-01-17'],
-#         'Text': ['ICA SUPERMARKET', 'SWISH PAYMENT RECEIVED', 'Test', 'ATM WITHDRAWAL'],
-#         'Belopp': ['-125,50', '500,00', '100,00', '-1 000,00'] # Note comma decimal and space thousand sep
-#     }
-#     dummy_path = Path('dummy_seb.csv')
-#     pd.DataFrame(dummy_data).to_csv(dummy_path, index=False, encoding='utf-8', sep=';') # Use semicolon for dummy
-# 
-#     parsed = parse_seb(dummy_path)
-#     if parsed is not None:
-#         print("Parsed SEB Data:")
-#         print(parsed)
-#         print(parsed.dtypes)
-# 
-#     # Clean up dummy file
-#     # dummy_path.unlink() 
