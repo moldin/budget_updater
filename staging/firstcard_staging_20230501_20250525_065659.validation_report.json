@@ -1,0 +1,25 @@
+{
+  "validation_timestamp": "2025-05-25T06:57:20.218229",
+  "file_info": {
+    "total_transactions": 1006,
+    "extraction_timestamp": "2025-05-25T04:56:59.787356+00:00",
+    "cutoff_date": "2023-05-01",
+    "date_range": {
+      "min_date": "2021-10-11",
+      "max_date": "2023-04-30"
+    }
+  },
+  "validation_results": {
+    "is_valid": false,
+    "error_count": 3,
+    "warning_count": 0,
+    "duplicate_count": 0
+  },
+  "errors": [
+    "Transaction 46: Duplicate business_key 'firstcard_rev_b1a31ca4d359bb92fef23b968302c3da'",
+    "Transaction 191: Duplicate business_key 'firstcard_rev_1d6465617de395f78a5af0cbefca0558'",
+    "Transaction 281: Duplicate business_key 'firstcard_rev_b13ee7959c8fc51ebd6cf699eff1cf46'"
+  ],
+  "warnings": [],
+  "duplicates": []
+}

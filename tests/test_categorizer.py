@@ -3,13 +3,19 @@ import pytest
 from unittest.mock import patch, MagicMock
 import os
 import json
+import unittest
+import pandas as pd
+import sys
+
+# Add the parent directory to the path so we can import the budget_updater module
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Set environment variables for testing BEFORE importing the module
 os.environ['GOOGLE_CLOUD_PROJECT'] = 'test-project'
 os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'dummy_credentials.json' # Needs to be set, even if dummy
 
 # Import the function to test AFTER setting env vars
-from budget_updater import categorizer
+from budget_updater.categorizer import categorizer
 
 @pytest.fixture(autouse=True)
 def mock_vertex_init(monkeypatch):

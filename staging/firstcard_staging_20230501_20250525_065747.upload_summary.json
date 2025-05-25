@@ -1,0 +1,7 @@
+{
+  "upload_timestamp": "2025-05-25T04:58:29.085508+00:00",
+  "staging_file": "staging/firstcard_staging_20230501_20250525_065747.json",
+  "uploaded_transactions": 1006,
+  "backup_table": "firstcard_transactions_raw_backup_20250525_065822",
+  "target_table": "aspiro-budget-analysis.budget_data_warehouse.firstcard_transactions_raw"
+}
